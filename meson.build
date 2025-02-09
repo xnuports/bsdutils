@@ -103,6 +103,9 @@ libm = cc.find_library('m', required : true)
 # df(1) needs libxo
 libxo = dependency('libxo', required : true)
 
+# timeout(1) needs libprocps (from procps)
+libprocps = dependency('libproc2', required : true)
+
 # needed by a few utils; provided by glibc, but not by e.g. musl
 
 fts_dirs = []
@@ -124,7 +127,7 @@ librpmatch = cc.find_library('rpmatch',
     required : false, static : get_option('static_rpmatch'), dirs : rpmatch_dirs
 )
 
-# sort needs pthreads
+# sort(1) needs pthreads
 libpthread = dependency('threads')
 
 # Header files for libcompat

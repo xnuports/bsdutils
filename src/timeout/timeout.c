@@ -40,6 +40,10 @@
 #include <string.h>
 #include <unistd.h>
 
+#include <proc/sig.h>
+
+extern char *__progname;
+
 #define EXIT_TIMEOUT 124
 
 static sig_atomic_t sig_chld = 0;
@@ -53,7 +57,7 @@ usage(void)
 
 	fprintf(stderr, "Usage: %s [--signal sig | -s sig] [--preserve-status]"
 	    " [--kill-after time | -k time] [--foreground] <duration> <command>"
-	    " <arg ...>\n", getprogname());
+	    " <arg ...>\n", __progname);
 
 	exit(EXIT_FAILURE);
 }
@@ -99,22 +103,17 @@ parse_duration(const char *duration)
 static int
 parse_signal(const char *str)
 {
-	int sig, i;
-	const char *errstr;
+	int sig;
 
-	sig = strtonum(str, 1, sys_nsig - 1, &errstr);
-
-	if (errstr == NULL)
-		return (sig);
 	if (strncasecmp(str, "SIG", 3) == 0)
 		str += 3;
 
-	for (i = 1; i < sys_nsig; i++) {
-		if (strcasecmp(str, sys_signame[i]) == 0)
-			return (i);
-	}
+	sig = signal_name_to_number(str);
 
-	errx(125, "invalid signal");
+	if (sig == -1)
+		errx(125, "invalid signal");
+
+	return (sig);
 }
 
 static void
