@@ -1,5 +1,5 @@
 /*-
- * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ * SPDX-License-Identifier: BSD-2-Clause
  *
  * Copyright (C) 2012 Oleg Moskalenko <mom040267@gmail.com>
  * Copyright (C) 2012 Gabor Kovesdan <gabor@FreeBSD.org>
@@ -28,8 +28,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <errno.h>
 #include <err.h>
 #include <langinfo.h>
@@ -37,7 +35,6 @@ __FBSDID("$FreeBSD$");
 #if defined(SORT_THREADS)
 #include <pthread.h>
 #include <semaphore.h>
-#include <sched.h>
 #endif
 #include <stdlib.h>
 #include <string.h>
@@ -47,8 +44,6 @@ __FBSDID("$FreeBSD$");
 
 #include "coll.h"
 #include "radixsort.h"
-
-#include "compat.h"
 
 #define DEFAULT_SORT_FUNC_RADIXSORT mergesort
 
@@ -647,7 +642,7 @@ run_top_sort_level(struct sort_level *sl)
 			pthread_t pth;
 
 			pthread_attr_init(&attr);
-			pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+			pthread_attr_setdetachstate(&attr, PTHREAD_DETACHED);
 
 			for (;;) {
 				int res = pthread_create(&pth, &attr,
@@ -655,7 +650,7 @@ run_top_sort_level(struct sort_level *sl)
 				if (res >= 0)
 					break;
 				if (errno == EAGAIN) {
-					sched_yield();
+					pthread_yield();
 					continue;
 				}
 				err(2, NULL);
@@ -684,9 +679,7 @@ run_sort(struct sort_list_item **base, size_t nmemb)
 		pthread_mutexattr_t mattr;
 
 		pthread_mutexattr_init(&mattr);
-#ifdef PTHREAD_MUTEX_ADAPTIVE_NP
 		pthread_mutexattr_settype(&mattr, PTHREAD_MUTEX_ADAPTIVE_NP);
-#endif
 
 		pthread_mutex_init(&g_ls_mutex, &mattr);
 		pthread_cond_init(&g_ls_cond, NULL);

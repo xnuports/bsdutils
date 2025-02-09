@@ -46,6 +46,9 @@ static const char rcsid[] =
   "$FreeBSD$";
 #endif /* not lint */
 
+#include <sys/capsicum.h>
+
+#include <capsicum_helpers.h>
 #include <ctype.h>
 #include <err.h>
 #include <errno.h>
@@ -99,7 +102,8 @@ main (int argc, char *argv[])
 	int ch, comp;
 	size_t prevbuflen, thisbuflen, b1;
 	char *prevline, *thisline, *p;
-	const char *ifn;
+	const char *ifn, *errstr;;
+	cap_rights_t rights;
 
 	(void) setlocale(LC_ALL, "");
 
@@ -127,14 +131,14 @@ main (int argc, char *argv[])
 			iflag = 1;
 			break;
 		case 'f':
-			numfields = strtol(optarg, &p, 10);
-			if (numfields < 0 || *p)
-				errx(1, "illegal field skip value: %s", optarg);
+			numfields = strtonum(optarg, 0, INT_MAX, &errstr);
+			if (errstr)
+				errx(1, "field skip value is %s: %s", errstr, optarg);
 			break;
 		case 's':
-			numchars = strtol(optarg, &p, 10);
-			if (numchars < 0 || *p)
-				errx(1, "illegal character skip value: %s", optarg);
+			numchars = strtonum(optarg, 0, INT_MAX, &errstr);
+			if (errstr != NULL)
+				errx(1, "character skip value is %s: %s", errstr, optarg);
 			break;
 		case 'u':
 			uflag = 1;
@@ -155,8 +159,32 @@ main (int argc, char *argv[])
 	ofp = stdout;
 	if (argc > 0 && strcmp(argv[0], "-") != 0)
 		ifp = file(ifn = argv[0], "r");
+	cap_rights_init(&rights, CAP_FSTAT, CAP_READ);
+	if (caph_rights_limit(fileno(ifp), &rights) < 0)
+		err(1, "unable to limit rights for %s", ifn);
+	cap_rights_init(&rights, CAP_FSTAT, CAP_WRITE);
 	if (argc > 1)
 		ofp = file(argv[1], "w");
+	else
+		cap_rights_set(&rights, CAP_IOCTL);
+	if (caph_rights_limit(fileno(ofp), &rights) < 0) {
+		err(1, "unable to limit rights for %s",
+		    argc > 1 ? argv[1] : "stdout");
+	}
+	if (cap_rights_is_set(&rights, CAP_IOCTL)) {
+		unsigned long cmd;
+
+		cmd = TIOCGETA; /* required by isatty(3) in printf(3) */
+
+		if (caph_ioctls_limit(fileno(ofp), &cmd, 1) < 0) {
+			err(1, "unable to limit ioctls for %s",
+			    argc > 1 ? argv[1] : "stdout");
+		}
+	}
+
+	caph_cache_catpages();
+	if (caph_enter() < 0)
+		err(1, "unable to enter capability mode");
 
 	prevbuflen = thisbuflen = 0;
 	prevline = thisline = NULL;

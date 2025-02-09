@@ -41,8 +41,6 @@ static char sccsid[] = "@(#)head.c	8.2 (Berkeley) 5/4/95";
 #endif
 #endif /* not lint */
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/types.h>
 
 #include <ctype.h>
@@ -61,15 +59,18 @@ __FBSDID("$FreeBSD$");
  * Bill Joy UCB August 24, 1977
  */
 
-static void head(FILE *, int);
+static void head(FILE *, intmax_t);
 static void head_bytes(FILE *, off_t);
 static void obsolete(char *[]);
-static void usage(void);
+static void usage(void) __dead2;
 
 static const struct option long_opts[] =
 {
 	{"bytes",	required_argument,	NULL, 'c'},
 	{"lines",	required_argument,	NULL, 'n'},
+	{"quiet",	no_argument,		NULL, 'q'},
+	{"silent",	no_argument,		NULL, 'q'},
+	{"verbose",	no_argument,		NULL, 'v'},
 	{NULL,		no_argument,		NULL, 0}
 };
 
@@ -77,26 +78,35 @@ int
 main(int argc, char *argv[])
 {
 	FILE *fp;
-	char *ep;
 	off_t bytecnt;
-	int ch, first, linecnt, eval;
+	intmax_t linecnt;
+	int ch, first, eval;
+	fileargs_t *fa;
+	int qflag = 0;
+	int vflag = 0;
 
 	linecnt = -1;
 	eval = 0;
 	bytecnt = -1;
 
 	obsolete(argv);
-	while ((ch = getopt_long(argc, argv, "+n:c:", long_opts, NULL)) != -1) {
+	while ((ch = getopt_long(argc, argv, "+n:c:qv", long_opts, NULL)) != -1) {
 		switch(ch) {
 		case 'c':
-			bytecnt = strtoimax(optarg, &ep, 10);
-			if (*ep || bytecnt <= 0)
+			if (expand_number(optarg, &bytecnt) || bytecnt <= 0)
 				errx(1, "illegal byte count -- %s", optarg);
 			break;
 		case 'n':
-			linecnt = strtol(optarg, &ep, 10);
-			if (*ep || linecnt <= 0)
+			if (expand_number(optarg, &linecnt) || linecnt <= 0)
 				errx(1, "illegal line count -- %s", optarg);
+			break;
+		case 'q':
+			qflag = 1;
+			vflag = 0;
+			break;
+		case 'v':
+			qflag = 0;
+			vflag = 1;
 			break;
 		case '?':
 		default:
@@ -113,12 +123,12 @@ main(int argc, char *argv[])
 		linecnt = 10;
 	if (*argv != NULL) {
 		for (first = 1; *argv != NULL; ++argv) {
-			if ((fp = fopen(*argv, "r")) == NULL) {
+			if ((fp = fileargs_fopen(fa, *argv, "r")) == NULL) {
 				warn("%s", *argv);
 				eval = 1;
 				continue;
 			}
-			if (argc > 1) {
+			if (vflag || (qflag == 0 && argc > 1)) {
 				(void)printf("%s==> %s <==\n",
 				    first ? "" : "\n", *argv);
 				first = 0;
@@ -134,16 +144,17 @@ main(int argc, char *argv[])
 	else
 		head_bytes(stdin, bytecnt);
 
+	fileargs_free(fa);
 	exit(eval);
 }
 
 static void
-head(FILE *fp, int cnt)
+head(FILE *fp, intmax_t cnt)
 {
-	char *cp = NULL;
-	size_t error, readlen = 0;
+	char *cp;
+	size_t error, readlen;
 
-	while (cnt != 0 && getline(&cp, &readlen, fp) != -1) {
+	while (cnt != 0 && (cp = fgetln(fp, &readlen)) != NULL) {
 		error = fwrite(cp, sizeof(char), readlen, stdout);
 		if (error != readlen)
 			err(1, "stdout");

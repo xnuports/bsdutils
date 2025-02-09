@@ -44,8 +44,6 @@ static char sccsid[] = "@(#)cp.c	8.2 (Berkeley) 4/1/94";
 #endif /* not lint */
 #endif
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 /*
  * Cp copies source files to target files.
  *
@@ -76,6 +74,7 @@ __FBSDID("$FreeBSD$");
 #include <unistd.h>
 
 #include "extern.h"
+
 #include "compat.h"
 
 #define	STRIP_TRAILING_SLASH(p) {					\
@@ -94,7 +93,6 @@ volatile sig_atomic_t info;
 enum op { FILE_TO_FILE, FILE_TO_DIR, DIR_TO_DNE };
 
 static int copy(char *[], enum op, int, struct stat *);
-static void siginfo(int __attribute__((unused)));
 
 int
 main(int argc, char *argv[])
@@ -187,7 +185,6 @@ main(int argc, char *argv[])
 		fts_options &= ~FTS_PHYSICAL;
 		fts_options |= FTS_LOGICAL | FTS_COMFOLLOW;
 	}
-	(void)signal(SIGINFO, siginfo);
 
 	/* Save the target base in "to". */
 	target = argv[--argc];
@@ -450,6 +447,9 @@ copy(char *argv[], enum op type, int fts_options, struct stat *root_stat)
 			if (pflag) {
 				if (setfile(curr->fts_statp, -1))
 					rval = 1;
+				if (preserve_dir_acls(curr->fts_statp,
+				    curr->fts_accpath, to.p_path) != 0)
+					rval = 1;
 			} else {
 				mode = curr->fts_statp->st_mode;
 				if ((mode & (S_ISUID | S_ISGID | S_ISVTX)) ||
@@ -580,11 +580,4 @@ copy(char *argv[], enum op type, int fts_options, struct stat *root_stat)
 	fts_close(ftsp);
 	free(recurse_path);
 	return (rval);
-}
-
-static void
-siginfo(int sig __attribute__((unused)))
-{
-
-	info = 1;
 }

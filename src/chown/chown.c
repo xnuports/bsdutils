@@ -42,8 +42,6 @@ static char sccsid[] = "@(#)chown.c	8.8 (Berkeley) 4/4/94";
 #endif
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/stat.h>
 
@@ -54,15 +52,12 @@ __FBSDID("$FreeBSD$");
 #include <grp.h>
 #include <libgen.h>
 #include <pwd.h>
-#include <signal.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-
-#include "compat.h"
 
 static void	a_gid(const char *);
 static void	a_uid(const char *);
@@ -75,14 +70,6 @@ static uid_t uid;
 static gid_t gid;
 static int ischown;
 static const char *gname;
-static volatile sig_atomic_t siginfo;
-
-static void
-siginfo_handler(int sig __attribute__((unused)))
-{
-
-	siginfo = 1;
-}
 
 int
 main(int argc, char **argv)
@@ -133,8 +120,6 @@ main(int argc, char **argv)
 
 	if (argc < 2)
 		usage();
-
-	(void)signal(SIGINFO, siginfo_handler);
 
 	if (Rflag) {
 		if (hflag && (Hflag || Lflag))
@@ -205,10 +190,6 @@ main(int argc, char **argv)
 			continue;
 		default:
 			break;
-		}
-		if (siginfo) {
-			print_info(p, 2);
-			siginfo = 0;
 		}
 		if ((uid == (uid_t)-1 || uid == p->fts_statp->st_uid) &&
 		    (gid == (gid_t)-1 || gid == p->fts_statp->st_gid))

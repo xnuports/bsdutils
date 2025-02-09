@@ -1,5 +1,5 @@
 /*-
- * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ * SPDX-License-Identifier: BSD-2-Clause
  *
  * Copyright (c) 2005  - Garance Alistair Drosehn <gad@FreeBSD.org>.
  * All rights reserved.
@@ -31,9 +31,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
-#include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/param.h>
 #include <err.h>
@@ -45,7 +42,6 @@ __FBSDID("$FreeBSD$");
 #include <unistd.h>
 
 #include "envopts.h"
-#include "compat.h"
 
 static const char *
 		 expand_vars(int in_thisarg, char **thisarg_p, char **dest_p,

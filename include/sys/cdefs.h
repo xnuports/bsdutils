@@ -53,5 +53,6 @@
 #define __printflike(x, y) __attribute__((format(printf, x, y)))
 #define __DECONST(a, v) ((a)(v))
 #define __unreachable() ((void)0)
+#define __is_aligned(x, y) (((uintptr_t)x & ((y) - 1)) == 0)
 
 #endif

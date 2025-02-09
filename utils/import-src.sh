@@ -146,8 +146,8 @@ cp -p usr/src/lib/libutil/humanize_number.c ${CWD}/compat
 cp -p usr/src/lib/libutil/expand_number.c ${CWD}/compat
 cp -p usr/src/lib/libc/stdlib/merge.c ${CWD}/compat
 cp -p usr/src/lib/libc/stdlib/heapsort.c ${CWD}/compat
-cp -p usr/src/contrib/libc-vis/vis.c ${CWD}/compat
-cp -p usr/src/contrib/libc-vis/vis.h ${CWD}/include
+#cp -p usr/src/contrib/libc-vis/vis.c ${CWD}/compat
+#cp -p usr/src/contrib/libc-vis/vis.h ${CWD}/include
 cp -p usr/src/lib/libc/string/strlcpy.c ${CWD}/compat
 cp -p usr/src/lib/libc/string/strlcat.c ${CWD}/compat
 

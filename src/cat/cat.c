@@ -46,8 +46,6 @@ static char sccsid[] = "@(#)cat.c	8.2 (Berkeley) 4/27/95";
 #endif
 #endif /* not lint */
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/stat.h>
 #ifndef NO_UDOM_SUPPORT
@@ -68,16 +66,16 @@ __FBSDID("$FreeBSD$");
 #include <wchar.h>
 #include <wctype.h>
 
-#include "compat.h"
-
 static int bflag, eflag, lflag, nflag, sflag, tflag, vflag;
 static int rval;
 static const char *filename;
+static fileargs_t *fa;
 
 static void usage(void) __dead2;
 static void scanfiles(char *argv[], int cooked);
 #ifndef BOOTSTRAP_CAT
 static void cook_cat(FILE *);
+static ssize_t in_kernel_copy(int);
 #endif
 static void raw_cat(int);
 
@@ -140,6 +138,29 @@ init_casper_net(cap_channel_t *casper)
 }
 #endif
 
+static void
+init_casper(int argc, char *argv[])
+{
+	cap_channel_t *casper;
+	cap_rights_t rights;
+
+	casper = cap_init();
+	if (casper == NULL)
+		err(EXIT_FAILURE, "unable to create Casper");
+
+	fa = fileargs_cinit(casper, argc, argv, O_RDONLY, 0,
+	    cap_rights_init(&rights, CAP_READ | CAP_FSTAT | CAP_FCNTL),
+	    FA_OPEN | FA_REALPATH);
+	if (fa == NULL)
+		err(EXIT_FAILURE, "unable to create fileargs");
+
+#ifndef NO_UDOM_SUPPORT
+	init_casper_net(casper);
+#endif
+
+	cap_close(casper);
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -189,6 +210,8 @@ main(int argc, char *argv[])
 			err(EXIT_FAILURE, "stdout");
 	}
 
+q	init_casper(argc, argv);
+
 	if (bflag || eflag || nflag || sflag || tflag || vflag)
 		scanfiles(argv, 1);
 	else
@@ -209,7 +232,7 @@ usage(void)
 }
 
 static void
-scanfiles(char *argv[], int cooked __attribute__((unused)))
+scanfiles(char *argv[], int cooked __unused)
 {
 	int fd, i;
 	char *path;
@@ -225,7 +248,7 @@ scanfiles(char *argv[], int cooked __attribute__((unused)))
 			fd = STDIN_FILENO;
 		} else {
 			filename = path;
-			fd = open(path, O_RDONLY);
+			fd = fileargs_open(fa, path);
 #ifndef NO_UDOM_SUPPORT
 			if (fd < 0 && errno == EOPNOTSUPP)
 				fd = udom_open(path, O_RDONLY);
@@ -245,7 +268,16 @@ scanfiles(char *argv[], int cooked __attribute__((unused)))
 			}
 #endif
 		} else {
+#ifndef BOOTSTRAP_CAT
+			if (in_kernel_copy(fd) == -1) {
+				if (errno == EINVAL || errno == EBADF)
+					raw_cat(fd);
+				else
+					err(1, "stdout");
+			}
+#else
 			raw_cat(fd);
+#endif
 			if (fd != STDIN_FILENO)
 				close(fd);
 		}
@@ -308,6 +340,7 @@ cook_cat(FILE *fp)
 				if (ferror(fp) && errno == EILSEQ) {
 					clearerr(fp);
 					/* Resync attempt. */
+					memset(&fp->_mbstate, 0, sizeof(mbstate_t));
 					if ((ch = getc(fp)) == EOF)
 						break;
 					wch = ch;
@@ -343,6 +376,21 @@ ilseq:
 	}
 	if (ferror(stdout))
 		err(1, "stdout");
+}
+
+static ssize_t
+in_kernel_copy(int rfd)
+{
+	int wfd;
+	ssize_t ret;
+
+	wfd = fileno(stdout);
+	ret = 1;
+
+	while (ret > 0)
+		ret = copy_file_range(rfd, NULL, wfd, NULL, SSIZE_MAX, 0);
+
+	return (ret);
 }
 #endif /* BOOTSTRAP_CAT */
 
@@ -400,7 +448,6 @@ udom_open(const char *path, int flags)
 	 */
 	bzero(&hints, sizeof(hints));
 	hints.ai_family = AF_LOCAL;
-	fd = -1;
 
 	if (fileargs_realpath(fa, path, rpath) == NULL)
 		return (-1);
@@ -413,6 +460,10 @@ udom_open(const char *path, int flags)
 	}
 	cap_rights_init(&rights, CAP_CONNECT, CAP_READ, CAP_WRITE,
 	    CAP_SHUTDOWN, CAP_FSTAT, CAP_FCNTL);
+
+	/* Default error if something goes wrong. */
+	serrno = EINVAL;
+
 	for (res = res0; res != NULL; res = res->ai_next) {
 		fd = socket(res->ai_family, res->ai_socktype,
 		    res->ai_protocol);
@@ -435,39 +486,40 @@ udom_open(const char *path, int flags)
 		else {
 			serrno = errno;
 			close(fd);
-			fd = -1;
 		}
 	}
 	freeaddrinfo(res0);
 
+	if (res == NULL) {
+		errno = serrno;
+		return (-1);
+	}
+
 	/*
 	 * handle the open flags by shutting down appropriate directions
 	 */
-	if (fd >= 0) {
-		switch(flags & O_ACCMODE) {
-		case O_RDONLY:
-			cap_rights_clear(&rights, CAP_WRITE);
-			if (shutdown(fd, SHUT_WR) == -1)
-				warn(NULL);
-			break;
-		case O_WRONLY:
-			cap_rights_clear(&rights, CAP_READ);
-			if (shutdown(fd, SHUT_RD) == -1)
-				warn(NULL);
-			break;
-		default:
-			break;
-		}
 
-		cap_rights_clear(&rights, CAP_CONNECT, CAP_SHUTDOWN);
-		if (caph_rights_limit(fd, &rights) < 0) {
-			serrno = errno;
-			close(fd);
-			errno = serrno;
-			return (-1);
-		}
-	} else {
+	switch (flags & O_ACCMODE) {
+	case O_RDONLY:
+		cap_rights_clear(&rights, CAP_WRITE);
+		if (shutdown(fd, SHUT_WR) == -1)
+			warn(NULL);
+		break;
+	case O_WRONLY:
+		cap_rights_clear(&rights, CAP_READ);
+		if (shutdown(fd, SHUT_RD) == -1)
+			warn(NULL);
+		break;
+	default:
+		break;
+	}
+
+	cap_rights_clear(&rights, CAP_CONNECT, CAP_SHUTDOWN);
+	if (caph_rights_limit(fd, &rights) < 0) {
+		serrno = errno;
+		close(fd);
 		errno = serrno;
+		return (-1);
 	}
 	return (fd);
 }

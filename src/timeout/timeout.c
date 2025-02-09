@@ -26,9 +26,7 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
-#include <sys/prctl.h>
+#include <sys/procctl.h>
 #include <sys/time.h>
 #include <sys/wait.h>
 
@@ -40,14 +38,9 @@ __FBSDID("$FreeBSD$");
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sysexits.h>
 #include <unistd.h>
 
-#include "compat.h"
-
 #define EXIT_TIMEOUT 124
-
-extern char *__progname;
 
 static sig_atomic_t sig_chld = 0;
 static sig_atomic_t sig_term = 0;
@@ -60,9 +53,9 @@ usage(void)
 
 	fprintf(stderr, "Usage: %s [--signal sig | -s sig] [--preserve-status]"
 	    " [--kill-after time | -k time] [--foreground] <duration> <command>"
-	    " <arg ...>\n", __progname);
+	    " <arg ...>\n", getprogname());
 
-	exit(EX_USAGE);
+	exit(EXIT_FAILURE);
 }
 
 static double
@@ -79,7 +72,7 @@ parse_duration(const char *duration)
 		return (ret);
 
 	if (end != NULL && *(end + 1) != '\0')
-		errx(EX_USAGE, "invalid duration");
+		errx(125, "invalid duration");
 
 	switch (*end) {
 	case 's':
@@ -107,19 +100,17 @@ static int
 parse_signal(const char *str)
 {
 	int sig, i;
-	const char *signame;
+	const char *errstr;
 
-	sig = strtoll(str, NULL, 10);
+	sig = strtonum(str, 1, sys_nsig - 1, &errstr);
 
-	if (errno != EINVAL && errno != ERANGE && sig > 1 && sig < NSIG)
+	if (errstr == NULL)
 		return (sig);
-
 	if (strncasecmp(str, "SIG", 3) == 0)
 		str += 3;
 
-	for (i = 1; i < NSIG; i++) {
-		signame = signum_to_signame(i);
-		if (signame && strcasecmp(str, signame) == 0)
+	for (i = 1; i < sys_nsig; i++) {
+		if (strcasecmp(str, sys_signame[i]) == 0)
 			return (i);
 	}
 
@@ -134,7 +125,7 @@ sig_handler(int signo)
 		return;
 	}
 
-	switch(signo) {
+	switch (signo) {
 	case 0:
 	case SIGINT:
 	case SIGHUP:
@@ -162,7 +153,7 @@ set_interval(double iv)
 	tim.it_value.tv_usec = (suseconds_t)(iv * 1000000UL);
 
 	if (setitimer(ITIMER_REAL, &tim, NULL) == -1)
-		err(EX_OSERR, "setitimer()");
+		err(EXIT_FAILURE, "setitimer()");
 }
 
 int
@@ -180,7 +171,8 @@ main(int argc, char **argv)
 	bool do_second_kill = false;
 	bool child_done = false;
 	struct sigaction signals;
-	unsigned long info;
+	struct procctl_reaper_status info;
+	struct procctl_reaper_kill killemall;
 	int signums[] = {
 		-1,
 		SIGTERM,
@@ -233,8 +225,8 @@ main(int argc, char **argv)
 
 	if (!foreground) {
 		/* Acquire a reaper */
-		if (prctl(PR_SET_CHILD_SUBREAPER, 1, 0, 0) == -1)
-			err(EX_OSERR, "Fail to set the reaper");
+		if (procctl(P_PID, getpid(), PROC_REAP_ACQUIRE, NULL) == -1)
+			err(EXIT_FAILURE, "Fail to acquire the reaper");
 	}
 
 	memset(&signals, 0, sizeof(signals));
@@ -243,23 +235,23 @@ main(int argc, char **argv)
 	if (killsig != SIGKILL && killsig != SIGSTOP)
 		signums[0] = killsig;
 
-	for (i = 0; i < sizeof(signums) / sizeof(signums[0]); i ++)
+	for (i = 0; i < sizeof(signums) / sizeof(signums[0]); i++)
 		sigaddset(&signals.sa_mask, signums[i]);
 
 	signals.sa_handler = sig_handler;
 	signals.sa_flags = SA_RESTART;
 
-	for (i = 0; i < sizeof(signums) / sizeof(signums[0]); i ++)
+	for (i = 0; i < sizeof(signums) / sizeof(signums[0]); i++)
 		if (signums[i] != -1 && signums[i] != 0 &&
 		    sigaction(signums[i], &signals, NULL) == -1)
-			err(EX_OSERR, "sigaction()");
+			err(EXIT_FAILURE, "sigaction()");
 
 	signal(SIGTTIN, SIG_IGN);
 	signal(SIGTTOU, SIG_IGN);
 
 	pid = fork();
 	if (pid == -1)
-		err(EX_OSERR, "fork()");
+		err(EXIT_FAILURE, "fork()");
 	else if (pid == 0) {
 		/* child process */
 		signal(SIGTTIN, SIG_DFL);
@@ -275,7 +267,7 @@ main(int argc, char **argv)
 	}
 
 	if (sigprocmask(SIG_BLOCK, &signals.sa_mask, NULL) == -1)
-		err(EX_OSERR, "sigprocmask()");
+		err(EXIT_FAILURE, "sigprocmask()");
 
 	/* parent continues here */
 	set_interval(first_kill);
@@ -302,8 +294,9 @@ main(int argc, char **argv)
 				if (foreground) {
 					break;
 				} else {
-					prctl(PR_GET_CHILD_SUBREAPER, &info, 0, 0);
-					if (info == 0)
+					procctl(P_PID, getpid(),
+					    PROC_REAP_STATUS, &info);
+					if (info.rs_children == 0)
 						break;
 				}
 			}
@@ -312,8 +305,10 @@ main(int argc, char **argv)
 
 			timedout = true;
 			if (!foreground) {
-				if (kill(getpid(), SIGKILL) == -1)
-					err(EXIT_FAILURE, "kill");
+				killemall.rk_sig = killsig;
+				killemall.rk_flags = 0;
+				procctl(P_PID, getpid(), PROC_REAP_KILL,
+				    &killemall);
 			} else
 				kill(pid, killsig);
 
@@ -327,8 +322,10 @@ main(int argc, char **argv)
 
 		} else if (sig_term) {
 			if (!foreground) {
-				if (kill(getpid(), SIGTERM) == -1)
-					err(EXIT_FAILURE, "kill");
+				killemall.rk_sig = sig_term;
+				killemall.rk_flags = 0;
+				procctl(P_PID, getpid(), PROC_REAP_KILL,
+				    &killemall);
 			} else
 				kill(pid, sig_term);
 
@@ -344,15 +341,15 @@ main(int argc, char **argv)
 
 	while (!child_done && wait(&pstat) == -1) {
 		if (errno != EINTR)
-			err(EX_OSERR, "waitpid()");
+			err(EXIT_FAILURE, "waitpid()");
 	}
 
 	if (!foreground)
-		prctl(PR_SET_CHILD_SUBREAPER, 0, 0, 0);
+		procctl(P_PID, getpid(), PROC_REAP_RELEASE, NULL);
 
 	if (WEXITSTATUS(pstat))
 		pstat = WEXITSTATUS(pstat);
-	else if(WIFSIGNALED(pstat))
+	else if (WIFSIGNALED(pstat))
 		pstat = 128 + WTERMSIG(pstat);
 
 	if (timedout && !preserve)

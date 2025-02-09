@@ -33,8 +33,6 @@
 static const char sccsid[] = "@(#)conv.c	8.1 (Berkeley) 6/6/93";
 #endif /* not lint */
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/types.h>
 
 #include <assert.h>
@@ -104,7 +102,7 @@ conv_c(PR *pr, u_char *p, size_t bufsize)
 	if (odmode && MB_CUR_MAX > 1) {
 		oclen = 0;
 retry:
-		clen = mbrtowc(&wc, (const char *)p, bufsize, &pr->mbstate);
+		clen = mbrtowc(&wc, (char *) p, bufsize, &pr->mbstate);
 		if (clen == 0)
 			clen = 1;
 		else if (clen == (size_t)-1 || (clen == (size_t)-2 &&

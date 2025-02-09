@@ -17,15 +17,12 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <openssl/ssl.h>
 #include <ctype.h>
 #include <err.h>
 #include <string.h>
 
 #include "extern.h"
-#include "compat.h"
 
 #define MAX_CHARS_PER_LINE 68
 

@@ -1,5 +1,5 @@
 /*-
- * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ * SPDX-License-Identifier: BSD-2-Clause
  *
  * Copyright (c) 2004 Tim J. Robbins.
  * All rights reserved.
@@ -24,8 +24,6 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 #ifndef CMAP_H
@@ -47,7 +45,7 @@ struct cmap {
 	wint_t		cm_cache[CM_CACHE_SIZE];
 	bool		cm_havecache;
 	struct cmapnode	*cm_root;
-#define	CM_DEF_SELF	(wint_t)(-2)
+#define	CM_DEF_SELF	-2
 	wint_t		cm_def;
 	wint_t		cm_min;
 	wint_t		cm_max;

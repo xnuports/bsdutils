@@ -41,8 +41,6 @@ static char sccsid[] = "@(#)ln.c	8.2 (Berkeley) 3/31/94";
 #endif /* not lint */
 #endif
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/stat.h>
 
@@ -55,8 +53,6 @@ __FBSDID("$FreeBSD$");
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-
-#include "compat.h"
 
 static int	fflag;			/* Unlink existing files. */
 static int	Fflag;			/* Remove empty directories also. */
@@ -150,7 +146,6 @@ main(int argc, char *argv[])
 	switch(argc) {
 	case 0:
 		usage();
-		break;
 		/* NOTREACHED */
 	case 1:				/* ln source */
 		exit(linkit(argv[0], ".", 1));

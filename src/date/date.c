@@ -42,8 +42,6 @@ static char sccsid[] = "@(#)date.c	8.2 (Berkeley) 4/28/95";
 #endif
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/time.h>
 #include <sys/stat.h>
@@ -58,8 +56,6 @@ __FBSDID("$FreeBSD$");
 #include <syslog.h>
 #include <unistd.h>
 #include <utmpx.h>
-#include <time.h>
-#include <langinfo.h>
 
 #include "vary.h"
 
@@ -72,12 +68,12 @@ __FBSDID("$FreeBSD$");
 static time_t tval;
 
 static void badformat(void);
-static void iso8601_usage(const char *);
+static void iso8601_usage(const char *) __dead2;
 static void multipleformats(void);
 static void printdate(const char *);
 static void printisodate(struct tm *);
 static void setthetime(const char *, const char *, int);
-static void usage(void);
+static void usage(void) __dead2;
 
 static const struct iso8601_fmt {
 	const char *refname;
@@ -99,7 +95,7 @@ main(int argc, char *argv[])
 	bool Iflag, jflag, Rflag;
 	const char *format;
 	char buf[1024];
-	char *fmt;
+	char *fmt, *outzone = NULL;
 	char *tmp;
 	struct vary *v;
 	const struct vary *badv;
@@ -112,7 +108,7 @@ main(int argc, char *argv[])
 	(void) setlocale(LC_TIME, "");
 	rflag = 0;
 	Iflag = jflag = Rflag = 0;
-	while ((ch = getopt(argc, argv, "f:I::jnRr:uv:")) != -1)
+	while ((ch = getopt(argc, argv, "f:I::jnRr:uv:z:")) != -1)
 		switch((char)ch) {
 		case 'f':
 			fmt = optarg;
@@ -156,6 +152,9 @@ main(int argc, char *argv[])
 		case 'u':		/* do everything in UTC */
 			(void)setenv("TZ", "UTC0", 1);
 			break;
+		case 'z':
+			outzone = optarg;
+			break;
 		case 'v':
 			v = vary_append(v, optarg);
 			break;
@@ -168,14 +167,7 @@ main(int argc, char *argv[])
 	if (!rflag && time(&tval) == -1)
 		err(1, "time");
 
-	/* Linux libc's do not support %+ */
-#ifdef _DATE_FMT
-	/* glibc extension */
-	format = nl_langinfo(_DATE_FMT);
-#else
-	/* fallback, e.g. musl */
-	format = "%a %b %e %H:%M:%S %Z %Y";
-#endif
+	format = "%+";
 
 	if (Rflag)
 		format = rfc2822_format;
@@ -200,6 +192,8 @@ main(int argc, char *argv[])
 		format = *argv + 1;
 	}
 
+	if (outzone != NULL && setenv("TZ", outzone, 1) != 0)
+		err(1, "setenv(TZ)");
 	lt = localtime(&tval);
 	if (lt == NULL)
 		errx(1, "invalid time");
@@ -221,6 +215,7 @@ main(int argc, char *argv[])
 		 * locale.
 		 */
 		setlocale(LC_TIME, "C");
+
 
 	(void)strftime(buf, sizeof(buf), format, lt);
 	printdate(buf);
@@ -355,18 +350,14 @@ setthetime(const char *fmt, const char *p, int jflag)
 	if (!jflag) {
 		utx.ut_type = OLD_TIME;
 		memset(utx.ut_id, 0, sizeof(utx.ut_id));
-		(void)gettimeofday(&tv, NULL);
-		utx.ut_tv.tv_sec = tv.tv_sec;
-		utx.ut_tv.tv_usec = tv.tv_usec;
+		(void)gettimeofday(&utx.ut_tv, NULL);
 		pututxline(&utx);
 		tv.tv_sec = tval;
 		tv.tv_usec = 0;
 		if (settimeofday(&tv, NULL) != 0)
 			err(1, "settimeofday (timeval)");
 		utx.ut_type = NEW_TIME;
-		(void)gettimeofday(&tv, NULL);
-		utx.ut_tv.tv_sec = tv.tv_sec;
-		utx.ut_tv.tv_usec = tv.tv_usec;
+		(void)gettimeofday(&utx.ut_tv, NULL);
 		pututxline(&utx);
 
 		if ((p = getlogin()) == NULL)
@@ -400,7 +391,7 @@ usage(void)
 	(void)fprintf(stderr, "%s\n%s\n%s\n",
 	    "usage: date [-jnRu] [-I[date|hours|minutes|seconds]] [-f input_fmt]",
 	    "            "
-	    "[-r filename|seconds] [-v[+|-]val[y|m|w|d|H|M|S]]",
+	    "[ -z output_zone ] [-r filename|seconds] [-v[+|-]val[y|m|w|d|H|M|S]]",
 	    "            "
 	    "[[[[[[cc]yy]mm]dd]HH]MM[.SS] | new_date] [+output_fmt]"
 	    );

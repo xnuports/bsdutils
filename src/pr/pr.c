@@ -50,8 +50,6 @@ static char sccsid[] = "@(#)pr.c	8.2 (Berkeley) 4/16/94";
 #endif
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/types.h>
 #include <sys/time.h>
 #include <sys/stat.h>
@@ -65,7 +63,6 @@ __FBSDID("$FreeBSD$");
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <time.h>
 
 #include "pr.h"
 #include "extern.h"
@@ -1548,7 +1545,7 @@ prtail(int cnt, int incomp)
  * terminate():	when a SIGINT is recvd
  */
 void
-terminate(int which_sig __attribute__((unused)))
+terminate(int which_sig __unused)
 {
 	flsh_errs();
 	exit(1);
@@ -1858,9 +1855,7 @@ setup(int argc, char *argv[])
 
 	(void) setlocale(LC_TIME, (Lflag != NULL) ? Lflag : "");
 
-	d_first = 0;
-	if (strlen(nl_langinfo(D_FMT)) >= 2 && nl_langinfo(D_FMT)[1] == 'd')
-		d_first = 1;
+	d_first = (*nl_langinfo(D_MD_ORDER) == 'd');
 	timefrmt = strdup(d_first ? TIMEFMTD : TIMEFMTM);
 
 	return(0);

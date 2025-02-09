@@ -35,8 +35,6 @@ static char sccsid[] = "@(#)odsyntax.c	8.2 (Berkeley) 5/4/95";
 #endif
 #endif /* not lint */
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/types.h>
 
 #include <ctype.h>
@@ -309,7 +307,7 @@ odformat(const char *fmt)
 }
 
 static const char *
-odformatfp(char fchar __attribute__((unused)), const char *fmt)
+odformatfp(char fchar __unused, const char *fmt)
 {
 	size_t isize;
 	int digits;

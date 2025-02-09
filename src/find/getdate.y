@@ -13,8 +13,6 @@
 /* SUPPRESS 288 on yyerrlab *//* Label unused */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <stdio.h>
 #include <ctype.h>
 
@@ -524,7 +522,7 @@ static TABLE const MilitaryTable[] = {
 
 /* ARGSUSED */
 static int
-yyerror(const char *s __attribute__((unused)))
+yyerror(const char *s __unused)
 {
   return 0;
 }

@@ -43,9 +43,12 @@ static const char rcsid[] =
   "$FreeBSD$";
 #endif /* not lint */
 
+#include <sys/capsicum.h>
+#include <sys/queue.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 
+#include <capsicum_helpers.h>
 #include <err.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -55,20 +58,20 @@ static const char rcsid[] =
 #include <string.h>
 #include <unistd.h>
 
-typedef struct _list {
-	struct _list *next;
+struct entry {
 	int fd;
 	const char *name;
-} LIST;
-static LIST *head;
+	STAILQ_ENTRY(entry) entries;
+};
+static STAILQ_HEAD(, entry) head = STAILQ_HEAD_INITIALIZER(head);
 
 static void add(int, const char *);
-static void usage(void);
+static void usage(void) __dead2;
 
 int
 main(int argc, char *argv[])
 {
-	LIST *p;
+	struct entry *p;
 	int n, fd, rval, wval;
 	char *bp;
 	int append, ch, exitval;
@@ -94,6 +97,9 @@ main(int argc, char *argv[])
 	if ((buf = malloc(BSIZE)) == NULL)
 		err(1, "malloc");
 
+	if (caph_limit_stdin() == -1 || caph_limit_stderr() == -1)
+		err(EXIT_FAILURE, "unable to limit stdio");
+
 	add(STDOUT_FILENO, "stdout");
 
 	for (exitval = 0; *argv; ++argv)
@@ -104,8 +110,10 @@ main(int argc, char *argv[])
 		} else
 			add(fd, *argv);
 
+	if (caph_enter() < 0)
+		err(EXIT_FAILURE, "unable to enter capability mode");
 	while ((rval = read(STDIN_FILENO, buf, BSIZE)) > 0)
-		for (p = head; p; p = p->next) {
+		STAILQ_FOREACH(p, &head, entries) {
 			n = rval;
 			bp = buf;
 			do {
@@ -132,12 +140,21 @@ usage(void)
 static void
 add(int fd, const char *name)
 {
-	LIST *p;
+	struct entry *p;
+	cap_rights_t rights;
 
-	if ((p = malloc(sizeof(LIST))) == NULL)
+	if (fd == STDOUT_FILENO) {
+		if (caph_limit_stdout() == -1)
+			err(EXIT_FAILURE, "unable to limit stdout");
+	} else {
+		cap_rights_init(&rights, CAP_WRITE, CAP_FSTAT);
+		if (caph_rights_limit(fd, &rights) < 0)
+			err(EXIT_FAILURE, "unable to limit rights");
+	}
+
+	if ((p = malloc(sizeof(struct entry))) == NULL)
 		err(1, "malloc");
 	p->fd = fd;
 	p->name = name;
-	p->next = head;
-	head = p;
+	STAILQ_INSERT_HEAD(&head, p, entries);
 }

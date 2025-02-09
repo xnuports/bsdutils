@@ -41,7 +41,6 @@ static char sccsid[] = "@(#)chmod.c	8.8 (Berkeley) 4/1/94";
 #endif /* not lint */
 #endif
 #include <sys/cdefs.h>
-
 #include <sys/param.h>
 #include <sys/stat.h>
 
@@ -50,7 +49,6 @@ static char sccsid[] = "@(#)chmod.c	8.8 (Berkeley) 4/1/94";
 #include <fcntl.h>
 #include <fts.h>
 #include <limits.h>
-#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -58,16 +56,7 @@ static char sccsid[] = "@(#)chmod.c	8.8 (Berkeley) 4/1/94";
 
 #include "compat.h"
 
-static volatile sig_atomic_t siginfo;
-
-static void usage(void);
-
-static void
-siginfo_handler(int sig __attribute__((unused)))
-{
-
-	siginfo = 1;
-}
+static void usage(void) __dead2;
 
 int
 main(int argc, char *argv[])
@@ -75,14 +64,14 @@ main(int argc, char *argv[])
 	FTS *ftsp;
 	FTSENT *p;
 	mode_t *set;
-	int Hflag, Lflag, Rflag, ch, fflag, fts_options, rval;
+	int Hflag, Lflag, Rflag, ch, fflag, fts_options, hflag, rval;
 	int vflag;
 	char *mode;
 	mode_t newmode;
 
 	set = NULL;
-	Hflag = Lflag = Rflag = fflag = vflag = 0;
-	while ((ch = getopt(argc, argv, "HLPRXfgorstuvwx")) != -1)
+	Hflag = Lflag = Rflag = fflag = hflag = vflag = 0;
+	while ((ch = getopt(argc, argv, "HLPRXfghorstuvwx")) != -1)
 		switch (ch) {
 		case 'H':
 			Hflag = 1;
@@ -100,6 +89,16 @@ main(int argc, char *argv[])
 			break;
 		case 'f':
 			fflag = 1;
+			break;
+		case 'h':
+			/*
+			 * In System V the -h option causes chmod to change
+			 * the mode of the symbolic link. 4.4BSD's symbolic
+			 * links didn't have modes, so it was an undocumented
+			 * noop.  In FreeBSD 3.0, lchmod(2) is introduced and
+			 * this option does real work.
+			 */
+			hflag = 1;
 			break;
 		/*
 		 * XXX
@@ -127,9 +126,10 @@ done:	argv += optind;
 	if (argc < 2)
 		usage();
 
-	(void)signal(SIGINFO, siginfo_handler);
-
 	if (Rflag) {
+		if (hflag)
+			errx(1, "the -R and -h options may not be "
+			    "specified together.");
 		if (Lflag) {
 			fts_options = FTS_LOGICAL;
 		} else {
@@ -139,6 +139,8 @@ done:	argv += optind;
 				fts_options |= FTS_COMFOLLOW;
 			}
 		}
+	} else if (hflag) {
+		fts_options = FTS_PHYSICAL;
 	} else {
 		fts_options = FTS_LOGICAL;
 	}
@@ -179,14 +181,21 @@ done:	argv += optind;
 			break;
 		}
 		newmode = getmode(set, p->fts_statp->st_mode);
+		/*
+		 * With NFSv4 ACLs, it is possible that applying a mode
+		 * identical to the one computed from an ACL will change
+		 * that ACL.
+		 */
+		if ((newmode & ALLPERMS) == (p->fts_statp->st_mode & ALLPERMS))
+			continue;
 		if (fchmodat(AT_FDCWD, p->fts_accpath, newmode, atflag) == -1
 		    && !fflag) {
 			warn("%s", p->fts_path);
 			rval = 1;
-		} else if (vflag || siginfo) {
+		} else if (vflag) {
 			(void)printf("%s", p->fts_path);
 
-			if (vflag > 1 || siginfo) {
+			if (vflag > 1) {
 				char m1[12], m2[12];
 
 				strmode(p->fts_statp->st_mode, m1);
@@ -198,7 +207,6 @@ done:	argv += optind;
 				    newmode, m2);
 			}
 			(void)printf("\n");
-			siginfo = 0;
 		}
 	}
 	if (errno)

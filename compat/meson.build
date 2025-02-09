@@ -6,7 +6,6 @@ libcompat_sources = [
     'setmode.c',
     'strmode.c',
     'expand_number.c',
-    'vis.c',
     'signames.c',
     'strlcpy.c',
     'strlcat.c',

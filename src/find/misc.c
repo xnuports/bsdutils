@@ -37,8 +37,6 @@ static char sccsid[] = "@(#)misc.c	8.2 (Berkeley) 4/1/94";
 #endif
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/types.h>
 #include <sys/stat.h>
 
@@ -50,10 +48,6 @@ __FBSDID("$FreeBSD$");
 #include <string.h>
 
 #include "find.h"
-
-#if defined(__linux__) && !defined(__GLIBC__)
-#include <rpmatch.h>
-#endif
 
 /*
  * brace_subst --

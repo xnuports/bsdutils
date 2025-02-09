@@ -1,5 +1,5 @@
 /*-
- * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ * SPDX-License-Identifier: BSD-2-Clause
  *
  * Copyright (c) 2002 Tim J. Robbins.
  * All rights reserved.
@@ -45,8 +45,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/types.h>
 
 #include <ctype.h>
@@ -61,6 +59,8 @@ __FBSDID("$FreeBSD$");
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+
+#include "compat.h"
 
 static void	 cleanup(void);
 static void	 do_lineno(const char *);
@@ -221,7 +221,7 @@ usage(void)
 }
 
 static void
-handlesig(int sig __attribute__((unused)))
+handlesig(int sig __unused)
 {
 	const char msg[] = "csplit: caught signal, cleaning up\n";
 

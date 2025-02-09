@@ -27,7 +27,6 @@
  * SUCH DAMAGE.
  *
  *	@(#)extern.h	8.1 (Berkeley) 5/31/93
- * $FreeBSD$
  */
 
 int	c_cchars(const void *, const void *);
@@ -41,8 +40,5 @@ int	msearch(char ***, struct info *);
 void	optlist(void);
 void	print(struct termios *, struct winsize *, int, enum FMT);
 void	usage(void) __dead2;
-
-int get_baud(speed_t s);
-speed_t get_speed(unsigned long b);
 
 extern struct cchar cchars1[], cchars2[];

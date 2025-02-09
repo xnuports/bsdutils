@@ -1,5 +1,5 @@
 /*-
- * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ * SPDX-License-Identifier: BSD-2-Clause
  *
  * Copyright (C) 2009 Gabor Kovesdan <gabor@FreeBSD.org>
  * Copyright (C) 2012 Oleg Moskalenko <mom040267@gmail.com>
@@ -28,9 +28,8 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/stat.h>
+#include <sys/sysctl.h>
 #include <sys/types.h>
 
 #include <err.h>
@@ -39,6 +38,7 @@ __FBSDID("$FreeBSD$");
 #include <getopt.h>
 #include <limits.h>
 #include <locale.h>
+#include <md5.h>
 #include <regex.h>
 #include <signal.h>
 #include <stdbool.h>
@@ -53,49 +53,14 @@ __FBSDID("$FreeBSD$");
 #include "file.h"
 #include "sort.h"
 
-#ifndef WITHOUT_LIBCRYPTO
-void MD5Init(MD5_CTX *context)
-{
-	context->mdctx = EVP_MD_CTX_new();
-
-	if (!context)
-		errx(1, "could not init MD5 context");
-
-	if (!EVP_DigestInit_ex(context->mdctx, EVP_md5(), NULL))
-		errx(1, "could not init MD5 digest");
-}
-
-void MD5Update(MD5_CTX *context, const void *data, unsigned int len)
-{
-	if (!EVP_DigestUpdate(context->mdctx, data, len))
-		errx(1, "could not update MD5 digest");
-}
-
-void MD5Final(unsigned char digest[MD5_DIGEST_LENGTH], MD5_CTX *context)
-{
-	if (!EVP_DigestFinal(context->mdctx, digest, NULL))
-		errx(1, "could not finalize MD5 digest");
-}
-#endif /* WITHOUT_LIBCRYPTO */
-
-#ifndef WITHOUT_NLS
-#include <nl_types.h>
-nl_catd catalog = (nl_catd)-1;
-#endif
-
-extern const char *__progname;
-
 #define	OPTIONS	"bcCdfghik:Mmno:RrsS:t:T:uVz"
 
-#ifndef WITHOUT_LIBCRYPTO
 static bool need_random;
 
 MD5_CTX md5_ctx;
-#endif
 
 /*
- * Default messages to use when NLS is disabled or no catalogue
- * is found.
+ * Default messages to use
  */
 const char *nlsstr[] = { "",
 /* 1*/"mutually exclusive flags",
@@ -118,11 +83,7 @@ const char *nlsstr[] = { "",
       "[--parallel thread_no] "
 #endif
       "[--human-numeric-sort] "
-#ifndef WITHOUT_LIBCRYPTO
-      "[--version-sort]] "
-#else
       "[--version-sort] [--random-sort [--random-source file]] "
-#endif
       "[--compress-program program] [file ...]\n" };
 
 struct sort_opts sort_opts_vals;
@@ -164,9 +125,7 @@ enum
 #if defined(SORT_THREADS)
 	PARALLEL_OPT,
 #endif
-#ifndef WITHOUT_LIBCRYPTO
 	RANDOMSOURCE_OPT,
-#endif
 	COMPRESSPROGRAM_OPT,
 	QSORT_OPT,
 	MERGESORT_OPT,
@@ -207,10 +166,8 @@ static struct option long_options[] = {
 #endif
 				{ "qsort", no_argument, NULL, QSORT_OPT },
 				{ "radixsort", no_argument, NULL, RADIXSORT_OPT },
-#ifndef WITHOUT_LIBCRYPTO
 				{ "random-sort", no_argument, NULL, 'R' },
 				{ "random-source", required_argument, NULL, RANDOMSOURCE_OPT },
-#endif
 				{ "reverse", no_argument, NULL, 'r' },
 				{ "sort", required_argument, NULL, SORT_OPT },
 				{ "stable", no_argument, NULL, 's' },
@@ -247,7 +204,7 @@ usage(bool opt_err)
 
 	out = opt_err ? stderr : stdout;
 
-	fprintf(out, getstr(12), __progname);
+	fprintf(out, getstr(12), getprogname());
 	if (opt_err)
 		exit(2);
 	exit(0);
@@ -364,24 +321,16 @@ set_locale(void)
 	lc = localeconv();
 
 	if (lc) {
-		wchar_t sym_decimal_point;
-		wchar_t sym_thousands_sep;
-		wchar_t sym_positive_sign;
-		wchar_t sym_negative_sign;
 		/* obtain LC_NUMERIC info */
 		/* Convert to wide char form */
-		conv_mbtowc(&sym_decimal_point, lc->decimal_point,
+		conv_mbtowc(&symbol_decimal_point, lc->decimal_point,
 		    symbol_decimal_point);
-		conv_mbtowc(&sym_thousands_sep, lc->thousands_sep,
+		conv_mbtowc(&symbol_thousands_sep, lc->thousands_sep,
 		    symbol_thousands_sep);
-		conv_mbtowc(&sym_positive_sign, lc->positive_sign,
+		conv_mbtowc(&symbol_positive_sign, lc->positive_sign,
 		    symbol_positive_sign);
-		conv_mbtowc(&sym_negative_sign, lc->negative_sign,
+		conv_mbtowc(&symbol_negative_sign, lc->negative_sign,
 		    symbol_negative_sign);
-		symbol_decimal_point = sym_decimal_point;
-		symbol_thousands_sep = sym_thousands_sep;
-		symbol_positive_sign = sym_positive_sign;
-		symbol_negative_sign = sym_negative_sign;
 	}
 
 	if (getenv("GNUSORT_NUMERIC_COMPATIBILITY"))
@@ -476,8 +425,7 @@ parse_memory_buffer_value(const char *value)
 				    100;
 				break;
 			default:
-				errno = EINVAL;
-				warn("%s", optarg);
+				warnc(EINVAL, "%s", optarg);
 				membuf = available_free_memory;
 			}
 		}
@@ -489,8 +437,8 @@ parse_memory_buffer_value(const char *value)
  * Signal handler that clears the temporary files.
  */
 static void
-sig_handler(int sig __attribute__((unused)), siginfo_t *siginfo __attribute__((unused)),
-    void *context __attribute__((unused)))
+sig_handler(int sig __unused, siginfo_t *siginfo __unused,
+    void *context __unused)
 {
 
 	clear_tmp_files();
@@ -629,13 +577,11 @@ set_sort_modifier(struct sort_mods *sm, int c)
 	case 'i':
 		sm->iflag = true;
 		break;
-#ifndef WITHOUT_LIBCRYPTO
 	case 'R':
 		sm->Rflag = true;
 		need_hint = true;
 		need_random = true;
 		break;
-#endif
 	case 'M':
 		initialise_months();
 		sm->Mflag = true;
@@ -901,7 +847,7 @@ end:
 void
 fix_obsolete_keys(int *argc, char **argv)
 {
-	char sopt[304];
+	char sopt[129];
 
 	for (int i = 1; i < *argc; i++) {
 		char *arg1;
@@ -957,7 +903,6 @@ fix_obsolete_keys(int *argc, char **argv)
 	}
 }
 
-#ifndef WITHOUT_LIBCRYPTO
 /*
  * Seed random sort
  */
@@ -1030,7 +975,6 @@ out:
 	MD5Init(&md5_ctx);
 	MD5Update(&md5_ctx, randseed, rd);
 }
-#endif /* WITHOUT_LIBCRYPTO */
 
 /*
  * Main function.
@@ -1039,9 +983,7 @@ int
 main(int argc, char **argv)
 {
 	char *outfile, *real_outfile;
-#ifndef WITHOUT_LIBCRYPTO
 	char *random_source = NULL;
-#endif
 	int c, result;
 	bool mef_flags[NUMBER_OF_MUTUALLY_EXCLUSIVE_FLAGS] =
 	    { false, false, false, false, false, false };
@@ -1060,10 +1002,6 @@ main(int argc, char **argv)
 	set_locale();
 	set_tmpdir();
 	set_sort_opts();
-
-#ifndef WITHOUT_NLS
-	catalog = catopen("sort", NL_CAT_LOCALE);
-#endif
 
 	fix_obsolete_keys(&argc, argv);
 
@@ -1104,8 +1042,7 @@ main(int argc, char **argv)
 
 				if (parse_k(optarg, &(keys[keys_num - 1]))
 				    < 0) {
-					errno = EINVAL;
-					err(2, "-k %s", optarg);
+					errc(2, EINVAL, "-k %s", optarg);
 				}
 
 				break;
@@ -1130,8 +1067,7 @@ main(int argc, char **argv)
 			case 't':
 				while (strlen(optarg) > 1) {
 					if (optarg[0] != '\\') {
-						errno = EINVAL;
-						err(2, "%s", optarg);
+						errc(2, EINVAL, "%s", optarg);
 					}
 					optarg += 1;
 					if (*optarg == '0') {
@@ -1174,10 +1110,8 @@ main(int argc, char **argv)
 						set_sort_modifier(sm, 'n');
 					else if (!strcmp(optarg, "month"))
 						set_sort_modifier(sm, 'M');
-#ifndef WITHOUT_LIBCRYPTO
 					else if (!strcmp(optarg, "random"))
 						set_sort_modifier(sm, 'R');
-#endif
 					else
 						unknown(optarg);
 				}
@@ -1206,11 +1140,9 @@ main(int argc, char **argv)
 			case RADIXSORT_OPT:
 				sort_opts_vals.sort_method = SORT_RADIXSORT;
 				break;
-#ifndef WITHOUT_LIBCRYPTO
 			case RANDOMSOURCE_OPT:
 				random_source = strdup(optarg);
 				break;
-#endif
 			case COMPRESSPROGRAM_OPT:
 				compress_program = strdup(optarg);
 				break;
@@ -1303,10 +1235,8 @@ main(int argc, char **argv)
 		}
 	}
 
-#ifndef WITHOUT_LIBCRYPTO
 	if (need_random)
 		get_random_seed(random_source);
-#endif
 
 	/* Case when the outfile equals one of the input files: */
 	if (strcmp(outfile, "-")) {
@@ -1396,11 +1326,6 @@ main(int argc, char **argv)
 	}
 
 	sort_free(outfile);
-
-#ifndef WITHOUT_NLS
-	if (catalog != (nl_catd)-1)
-		catclose(catalog);
-#endif
 
 	return (result);
 }

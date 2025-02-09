@@ -78,7 +78,7 @@ reallocarray() have _DEFAULT_SOURCE added to their Makefile.
 __libc_sigprocmask()
 --------------------
 We have <signal.h> on Linux and can replace calls to
-__libc_sigprocmask() with _sigprocmask().
+__libc_sigprocmask() with sigprocmask().
 
 
 REG_BASIC

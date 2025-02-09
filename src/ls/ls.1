@@ -30,9 +30,8 @@
 .\" SUCH DAMAGE.
 .\"
 .\"     @(#)ls.1	8.7 (Berkeley) 7/29/94
-.\" $FreeBSD$
 .\"
-.Dd October 31, 2022
+.Dd July 18, 2023
 .Dt LS 1
 .Os
 .Sh NAME
@@ -40,7 +39,7 @@
 .Nd list directory contents
 .Sh SYNOPSIS
 .Nm
-.Op Fl ABCFGHILPRSTWabcdfghiklmnpqrstuvwxy1\&,
+.Op Fl ABCFGHILPRSTUWZabcdfghiklmnopqrstuvwxy1\&,
 .Op Fl -color Ns = Ns Ar when
 .Op Fl D Ar format
 .Op Ar
@@ -185,8 +184,17 @@ The
 option gives even more control over the output format.
 This option is not defined in
 .St -p1003.1-2008 .
+.It Fl U
+Use time when file was created for sorting or printing.
+This option is not defined in
+.St -p1003.1-2008 .
 .It Fl W
 Display whiteouts when scanning directories.
+This option is not defined in
+.St -p1003.1-2008 .
+.It Fl Z
+Display each file's MAC label; see
+.Xr maclabel 7 .
 This option is not defined in
 .St -p1003.1-2008 .
 .It Fl a
@@ -292,14 +300,9 @@ and
 .Fl s
 options.
 .It Fl g
-This option has no effect.
-It is only available for compatibility with
-.Bx 4.3 ,
-where it was used to display the group name in the long
+Display the long
 .Pq Fl l
-format output.
-This option is incompatible with
-.St -p1003.1-2008 .
+format output without the file owner's name or number.
 .It Fl h
 When used with the
 .Fl l
@@ -329,6 +332,15 @@ Display user and group IDs numerically rather than converting to a user
 or group name in a long
 .Pq Fl l
 output.
+.It Fl o
+Include the file flags in a long
+.Pq Fl l
+output.
+This option is incompatible with
+.St -p1003.1-2008 .
+See
+.Xr chflags 1
+for a list of file flags and their meanings.
 .It Fl p
 Write a slash
 .Pq Ql /
@@ -669,7 +681,7 @@ The default
 .Dq Li cons25
 console has the proper capabilities,
 but to display the colors in an
-.Xr xterm 1 ,
+.Xr xterm 1 Pq Pa ports/x11/xterm ,
 for example,
 the
 .Ev TERM
@@ -850,10 +862,11 @@ List the contents of the current working directory in long format:
 .Dl $ ls -l
 .Pp
 In addition to listing the contents of the current working directory in
-long format, show inode numbers,
+long format, show inode numbers, file flags (see
+.Xr chflags 1 ) ,
 and suffix each filename with a symbol representing its file type:
 .Pp
-.Dl $ ls -liF
+.Dl $ ls -lioF
 .Pp
 List the files in
 .Pa /var/log ,
@@ -867,10 +880,11 @@ files in order to be compatible with the
 .St -p1003.2
 specification.
 .Sh SEE ALSO
+.Xr chflags 1 ,
 .Xr chmod 1 ,
 .Xr getfacl 1 ,
 .Xr sort 1 ,
-.Xr xterm 1 ,
+.Xr xterm 1 Pq Pa ports/x11/xterm ,
 .Xr localeconv 3 ,
 .Xr strcoll 3 ,
 .Xr strftime 3 ,
@@ -883,9 +897,9 @@ specification.
 .Xr getfmac 8
 .Sh STANDARDS
 With the exception of options
-.Fl g
+.Fl g , n
 and
-.Fl n,
+.Fl o ,
 the
 .Nm
 utility conforms to
@@ -893,7 +907,7 @@ utility conforms to
 and
 .St -p1003.1-2008 .
 The options
-.Fl B , D , G , I , T , W , b , h , v , w , y
+.Fl B , D , G , I , T , U , W , Z , b , h , v , w , y
 and
 .Fl ,
 are non-standard extensions.

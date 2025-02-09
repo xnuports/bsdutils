@@ -17,8 +17,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <err.h>
 #include <limits.h>
 #include <openssl/ssl.h>
@@ -72,7 +70,7 @@ static void		 print_err(void);
 static void		 pop_print(void);
 static void		 pop_printn(void);
 static __inline void	 print_stack(void);
-static __inline void	 _dup(void);
+static __inline void	 dup(void);
 static void		 swap(void);
 static void		 drop(void);
 
@@ -197,7 +195,7 @@ static const struct jump_entry jump_table_data[] = {
 	{ '_',	parse_number	},
 	{ 'a',	to_ascii	},
 	{ 'c',	clear_stack	},
-	{ 'd',	_dup		},
+	{ 'd',	dup		},
 	{ 'e',	print_err	},
 	{ 'f',	print_stack	},
 	{ 'i',	set_ibase	},
@@ -551,7 +549,7 @@ pop_printn(void)
 }
 
 static __inline void
-_dup(void)
+dup(void)
 {
 
 	stack_dup(&bmachine.stack);

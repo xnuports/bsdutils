@@ -1,5 +1,5 @@
 /*-
- * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ * SPDX-License-Identifier: BSD-2-Clause
  *
  * Copyright (C) 2009 Gabor Kovesdan <gabor@FreeBSD.org>
  * Copyright (C) 2012 Oleg Moskalenko <mom040267@gmail.com>
@@ -28,17 +28,15 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <sys/queue.h>
 
 #include <err.h>
 #include <fcntl.h>
 #if defined(SORT_THREADS)
 #include <pthread.h>
-#include <sched.h>
 #endif
 #include <semaphore.h>
 #include <stdio.h>
@@ -51,8 +49,6 @@ __FBSDID("$FreeBSD$");
 #include "coll.h"
 #include "file.h"
 #include "radixsort.h"
-
-#include "compat.h"
 
 unsigned long long free_memory = 1000000;
 unsigned long long available_free_memory = 1000000;
@@ -96,13 +92,13 @@ struct file_header
 struct CLEANABLE_FILE
 {
 	char				*fn;
-	struct CLEANABLE_FILE *next;
+	LIST_ENTRY(CLEANABLE_FILE)	 files;
 };
 
 /*
  * List header of "cleanable" files list.
  */
-struct CLEANABLE_FILE *tmp_files;
+static LIST_HEAD(CLEANABLE_FILES,CLEANABLE_FILE) tmp_files;
 
 /*
  * Semaphore to protect the tmp file list.
@@ -122,7 +118,7 @@ void
 init_tmp_files(void)
 {
 
-	tmp_files = NULL;
+	LIST_INIT(&tmp_files);
 	sem_init(&tmp_files_sem, 0, 1);
 }
 
@@ -138,8 +134,7 @@ tmp_file_atexit(const char *tmp_file)
 		struct CLEANABLE_FILE *item =
 		    sort_malloc(sizeof(struct CLEANABLE_FILE));
 		item->fn = sort_strdup(tmp_file);
-		item->next = tmp_files;
-		tmp_files = item;
+		LIST_INSERT_HEAD(&tmp_files, item, files);
 		sem_post(&tmp_files_sem);
 	}
 }
@@ -153,7 +148,7 @@ clear_tmp_files(void)
 	struct CLEANABLE_FILE *item;
 
 	sem_wait(&tmp_files_sem);
-	for (item = tmp_files; item; item = item->next) {
+	LIST_FOREACH(item,&tmp_files,files) {
 		if ((item) && (item->fn))
 			unlink(item->fn);
 	}
@@ -171,7 +166,7 @@ file_is_tmp(const char* fn)
 
 	if (fn) {
 		sem_wait(&tmp_files_sem);
-		for (item = tmp_files; item; item = item->next) {
+		LIST_FOREACH(item,&tmp_files,files) {
 			if ((item) && (item->fn))
 				if (strcmp(item->fn, fn) == 0) {
 					ret = true;
@@ -614,7 +609,7 @@ file_reader_init(const char *fsrc)
 			size_t sz = 0;
 			int fd, flags;
 
-			flags = MAP_PRIVATE;
+			flags = MAP_NOCORE | MAP_NOSYNC;
 
 			fd = open(fsrc, O_RDONLY);
 			if (fd < 0)
@@ -636,7 +631,6 @@ file_reader_init(const char *fsrc)
 				close(fd);
 				break;
 			}
-			madvise(addr, sz, MADV_DONTDUMP);
 
 			ret->fd = fd;
 			ret->mmapaddr = addr;
@@ -1455,7 +1449,7 @@ mt_sort(struct sort_list *list,
 			pthread_attr_t attr;
 
 			pthread_attr_init(&attr);
-			pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+			pthread_attr_setdetachstate(&attr, PTHREAD_DETACHED);
 
 			for (;;) {
 				int res = pthread_create(&pth, &attr,
@@ -1464,7 +1458,7 @@ mt_sort(struct sort_list *list,
 				if (res >= 0)
 					break;
 				if (errno == EAGAIN) {
-					sched_yield();
+					pthread_yield();
 					continue;
 				}
 				err(2, NULL);

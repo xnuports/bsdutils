@@ -45,8 +45,6 @@ static char sccsid[] = "@(#)dd.c	8.5 (Berkeley) 4/2/94";
 #endif /* not lint */
 #endif
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/stat.h>
 #include <sys/mtio.h>
@@ -59,6 +57,7 @@ __FBSDID("$FreeBSD$");
 #include <fcntl.h>
 #include <inttypes.h>
 #include <locale.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -67,7 +66,6 @@ __FBSDID("$FreeBSD$");
 
 #include "dd.h"
 #include "extern.h"
-#include "compat.h"
 
 static void dd_close(void);
 static void dd_in(void);
@@ -87,11 +85,14 @@ char	fill_char;		/* Character to fill with if defined */
 size_t	speed = 0;		/* maximum speed, in bytes per second */
 volatile sig_atomic_t need_summary;
 volatile sig_atomic_t need_progress;
+volatile sig_atomic_t kill_signal;
 
 int
-main(int argc __attribute__((unused)), char *argv[])
+main(int argc __unused, char *argv[])
 {
 	struct itimerval itv = { { 1, 0 }, { 1, 0 } }; /* SIGALARM every second, if needed */
+
+	prepare_io();
 
 	(void)setlocale(LC_CTYPE, "");
 	jcl(argv);
@@ -102,7 +103,6 @@ main(int argc __attribute__((unused)), char *argv[])
 		(void)signal(SIGALRM, sigalarm_handler);
 		setitimer(ITIMER_REAL, &itv, NULL);
 	}
-	(void)signal(SIGINT, terminate);
 
 	atexit(summary);
 
@@ -136,6 +136,8 @@ setup(void)
 {
 	u_int cnt;
 	int iflags, oflags;
+	cap_rights_t rights;
+	unsigned long cmds[] = { FIODTYPE, MTIOCTOP };
 
 	if (in.name == NULL) {
 		in.name = "stdin";
@@ -144,16 +146,25 @@ setup(void)
 		iflags = 0;
 		if (ddflags & C_IDIRECT)
 			iflags |= O_DIRECT;
+		before_io();
 		in.fd = open(in.name, O_RDONLY | iflags, 0);
+		after_io();
 		if (in.fd == -1)
 			err(1, "%s", in.name);
 	}
 
 	getfdtype(&in);
 
+	cap_rights_init(&rights, CAP_READ, CAP_SEEK);
+	if (caph_rights_limit(in.fd, &rights) == -1)
+		err(1, "unable to limit capability rights");
+
 	if (files_cnt > 1 && !(in.flags & ISTAPE))
 		errx(1, "files is not supported for non-tape devices");
 
+	cap_rights_set(&rights, CAP_FTRUNCATE, CAP_IOCTL, CAP_WRITE);
+	if (ddflags & (C_FDATASYNC | C_FSYNC))
+		cap_rights_set(&rights, CAP_FSYNC);
 	if (out.name == NULL) {
 		/* No way to check for read access here. */
 		out.fd = STDOUT_FILENO;
@@ -174,21 +185,46 @@ setup(void)
 			oflags |= O_FSYNC;
 		if (ddflags & C_ODIRECT)
 			oflags |= O_DIRECT;
+		before_io();
 		out.fd = open(out.name, O_RDWR | oflags, DEFFILEMODE);
+		after_io();
 		/*
 		 * May not have read access, so try again with write only.
 		 * Without read we may have a problem if output also does
 		 * not support seeks.
 		 */
 		if (out.fd == -1) {
+			before_io();
 			out.fd = open(out.name, O_WRONLY | oflags, DEFFILEMODE);
+			after_io();
 			out.flags |= NOREAD;
+			cap_rights_clear(&rights, CAP_READ);
 		}
 		if (out.fd == -1)
 			err(1, "%s", out.name);
 	}
 
 	getfdtype(&out);
+
+	if (caph_rights_limit(out.fd, &rights) == -1)
+		err(1, "unable to limit capability rights");
+	if (caph_ioctls_limit(out.fd, cmds, nitems(cmds)) == -1)
+		err(1, "unable to limit capability rights");
+
+	if (in.fd != STDIN_FILENO && out.fd != STDIN_FILENO) {
+		if (caph_limit_stdin() == -1)
+			err(1, "unable to limit capability rights");
+	}
+
+	if (in.fd != STDOUT_FILENO && out.fd != STDOUT_FILENO) {
+		if (caph_limit_stdout() == -1)
+			err(1, "unable to limit capability rights");
+	}
+
+	if (in.fd != STDERR_FILENO && out.fd != STDERR_FILENO) {
+		if (caph_limit_stderr() == -1)
+			err(1, "unable to limit capability rights");
+	}
 
 	/*
 	 * Allocate space for the input and output buffers.  If not doing
@@ -278,16 +314,23 @@ static void
 getfdtype(IO *io)
 {
 	struct stat sb;
+	int type;
 
 	if (fstat(io->fd, &sb) == -1)
 		err(1, "%s", io->name);
 	if (S_ISREG(sb.st_mode))
 		io->flags |= ISTRUNC;
-	if (S_ISCHR(sb.st_mode) || S_ISBLK(sb.st_mode)) {
-		if (S_ISCHR(sb.st_mode))
-			io->flags |= ISCHR;
-		if (S_ISBLK(sb.st_mode))
-			io->flags |= ISSEEK;
+	if (S_ISCHR(sb.st_mode) || S_ISBLK(sb.st_mode)) { 
+		if (ioctl(io->fd, FIODTYPE, &type) == -1) {
+			err(1, "%s", io->name);
+		} else {
+			if (type & D_TAPE)
+				io->flags |= ISTAPE;
+			else if (type & (D_DISK | D_MEM))
+				io->flags |= ISSEEK;
+			if (S_ISCHR(sb.st_mode) && (type & D_TAPE) == 0)
+				io->flags |= ISCHR;
+		}
 		return;
 	}
 	errno = 0;
@@ -370,7 +413,9 @@ dd_in(void)
 
 		in.dbrcnt = 0;
 fill:
+		before_io();
 		n = read(in.fd, in.dbp + in.dbrcnt, in.dbsz - in.dbrcnt);
+		after_io();
 
 		/* EOF */
 		if (n == 0 && in.dbrcnt == 0)
@@ -551,7 +596,9 @@ dd_out(int force)
 					pending = 0;
 				}
 				if (cnt) {
+					before_io();
 					nw = write(out.fd, outp, cnt);
+					after_io();
 					out.seek_offset = 0;
 				} else {
 					return;

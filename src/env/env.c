@@ -42,7 +42,6 @@ static char sccsid[] = "@(#)env.c	8.3 (Berkeley) 4/2/94";
 #endif
 
 #include <sys/cdefs.h>
-
 #include <sys/types.h>
 
 #include <err.h>
@@ -60,7 +59,7 @@ extern char **environ;
 
 int	 env_verbosity;
 
-static void usage(void);
+static void usage(void) __dead2;
 
 /*
  * Exit codes.
@@ -74,18 +73,21 @@ main(int argc, char **argv)
 {
 	char *altpath, **ep, *p, **parg, term;
 	char *cleanenv[1];
-	char *login_name;
+	char *login_class, *login_name;
 	struct passwd *pw;
+	bool login_as_user;
 	uid_t uid;
 	int ch, want_clear;
 	int rtrn;
 
 	altpath = NULL;
+	login_class = NULL;
 	login_name = NULL;
 	pw = NULL;
+	login_as_user = false;
 	want_clear = 0;
 	term = '\n';
-	while ((ch = getopt(argc, argv, "0iP:S:u:v")) != -1)
+	while ((ch = getopt(argc, argv, "-0iL:P:S:U:u:v")) != -1)
 		switch(ch) {
 		case '-':
 		case 'i':
@@ -93,6 +95,12 @@ main(int argc, char **argv)
 			break;
 		case '0':
 			term = '\0';
+			break;
+		case 'U':
+			login_as_user = true;
+			/* FALLTHROUGH */
+		case 'L':
+			login_name = optarg;
 			break;
 		case 'P':
 			altpath = strdup(optarg);
@@ -121,10 +129,6 @@ main(int argc, char **argv)
 		default:
 			usage();
 		}
-	if (optind < argc && !strcmp(argv[optind], "-")) {
-		want_clear = 1;
-		++argv; /* skip the initial - during later scan */
-	}
 	if (want_clear) {
 		environ = cleanenv;
 		cleanenv[0] = NULL;
@@ -132,6 +136,9 @@ main(int argc, char **argv)
 			fprintf(stderr, "#env clearing environ\n");
 	}
 	if (login_name != NULL) {
+		login_class = strchr(login_name, '/');
+		if (login_class)
+			*login_class++ = '\0';
 		if (*login_name != '\0' && strcmp(login_name, "-") != 0) {
 			pw = getpwnam(login_name);
 			if (pw == NULL) {
@@ -144,8 +151,9 @@ main(int argc, char **argv)
 			if (pw == NULL)
 				errx(EXIT_FAILURE, "no such user: %s", login_name);
 		}
-
 		endpwent();
+		if (lc != NULL)
+			login_close(lc);
 	}
 	for (argv += optind; *argv && (p = strchr(*argv, '=')); ++argv) {
 		if (env_verbosity)
