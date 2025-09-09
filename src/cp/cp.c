@@ -44,8 +44,6 @@ static char sccsid[] = "@(#)cp.c	8.2 (Berkeley) 4/1/94";
 #endif /* not lint */
 #endif
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 /*
  * Cp copies source files to target files.
  *
@@ -76,7 +74,6 @@ __FBSDID("$FreeBSD$");
 #include <unistd.h>
 
 #include "extern.h"
-#include "compat.h"
 
 #define	STRIP_TRAILING_SLASH(p) {					\
 	while ((p).p_end > (p).p_path + 1 && (p).p_end[-1] == '/')	\
@@ -87,26 +84,25 @@ static char emptystring[] = "";
 
 PATH_T to = { to.p_path, emptystring, "" };
 
-int fflag, iflag, lflag, nflag, pflag, sflag, vflag;
-static int Hflag, Lflag, Rflag, rflag;
+int Nflag, fflag, iflag, lflag, nflag, pflag, sflag, vflag;
+static int Hflag, Lflag, Pflag, Rflag, rflag;
 volatile sig_atomic_t info;
 
 enum op { FILE_TO_FILE, FILE_TO_DIR, DIR_TO_DNE };
 
 static int copy(char *[], enum op, int, struct stat *);
-static void siginfo(int __attribute__((unused)));
+static void siginfo(int __unused);
 
 int
 main(int argc, char *argv[])
 {
 	struct stat to_stat, tmp_stat;
 	enum op type;
-	int Pflag, ch, fts_options, r, have_trailing_slash;
+	int ch, fts_options, r, have_trailing_slash;
 	char *target;
 
 	fts_options = FTS_NOCHDIR | FTS_PHYSICAL;
-	Pflag = 0;
-	while ((ch = getopt(argc, argv, "HLPRafilnprsvx")) != -1)
+	while ((ch = getopt(argc, argv, "HLPRafilNnprsvx")) != -1)
 		switch (ch) {
 		case 'H':
 			Hflag = 1;
@@ -139,6 +135,9 @@ main(int argc, char *argv[])
 			break;
 		case 'l':
 			lflag = 1;
+			break;
+		case 'N':
+			Nflag = 1;
 			break;
 		case 'n':
 			nflag = 1;
@@ -228,7 +227,7 @@ main(int argc, char *argv[])
 		 * Case (1).  Target is not a directory.
 		 */
 		if (argc > 1)
-			errx(1, "%s is not a directory", to.p_path);
+			errc(1, ENOTDIR, "%s", to.p_path);
 
 		/*
 		 * Need to detect the case:
@@ -251,17 +250,17 @@ main(int argc, char *argv[])
 			type = FILE_TO_FILE;
 
 		if (have_trailing_slash && type == FILE_TO_FILE) {
-			if (r == -1) {
-				errx(1, "directory %s does not exist",
-				    to.p_path);
-			} else
-				errx(1, "%s is not a directory", to.p_path);
+			if (r == -1)
+				errc(1, ENOENT, "%s", to.p_path);
+			else
+				errc(1, ENOTDIR, "%s", to.p_path);
 		}
-	} else
+	} else {
 		/*
 		 * Case (2).  Target is a directory.
 		 */
 		type = FILE_TO_DIR;
+	}
 
 	/*
 	 * For DIR_TO_DNE, we could provide copy() with the to_stat we've
@@ -317,8 +316,7 @@ copy(char *argv[], enum op type, int fts_options, struct stat *root_stat)
 		case FTS_NS:
 		case FTS_DNR:
 		case FTS_ERR:
-			warnx("%s: %s",
-			    curr->fts_path, strerror(curr->fts_errno));
+			warnc(curr->fts_errno, "%s", curr->fts_path);
 			badcp = rval = 1;
 			continue;
 		case FTS_DC:			/* Warn, continue. */
@@ -370,8 +368,8 @@ copy(char *argv[], enum op type, int fts_options, struct stat *root_stat)
 					base = (p == NULL) ? 0 :
 					    (int)(p - curr->fts_path + 1);
 
-					if (!strcmp(&curr->fts_path[base],
-					    ".."))
+					if (strcmp(curr->fts_path + base, "..")
+					    == 0)
 						base += 1;
 				} else
 					base = curr->fts_pathlen;
@@ -450,9 +448,12 @@ copy(char *argv[], enum op type, int fts_options, struct stat *root_stat)
 			if (pflag) {
 				if (setfile(curr->fts_statp, -1))
 					rval = 1;
+				if (preserve_dir_acls(curr->fts_statp,
+				    curr->fts_accpath, to.p_path) != 0)
+					rval = 1;
 			} else {
 				mode = curr->fts_statp->st_mode;
-				if ((mode & (S_ISUID | S_ISGID | S_ISVTX)) ||
+				if ((mode & (S_ISUID | S_ISGID | S_ISTXT)) ||
 				    ((mode | S_IRWXU) & mask) != (mode & mask))
 					if (chmod(to.p_path, mode & mask) !=
 					    0) {
@@ -489,13 +490,19 @@ copy(char *argv[], enum op type, int fts_options, struct stat *root_stat)
 
 		switch (curr->fts_statp->st_mode & S_IFMT) {
 		case S_IFLNK:
-			/* Catch special case of a non-dangling symlink. */
 			if ((fts_options & FTS_LOGICAL) ||
 			    ((fts_options & FTS_COMFOLLOW) &&
 			    curr->fts_level == 0)) {
+				/*
+				 * We asked FTS to follow links but got
+				 * here anyway, which means the target is
+				 * nonexistent or inaccessible.  Let
+				 * copy_file() deal with the error.
+				 */
 				if (copy_file(curr, dne))
 					badcp = rval = 1;
-			} else {	
+			} else {
+				/* Copy the link. */
 				if (copy_link(curr, !dne))
 					badcp = rval = 1;
 			}
@@ -517,9 +524,13 @@ copy(char *argv[], enum op type, int fts_options, struct stat *root_stat)
 			 * umask blocks owner writes, we fail.
 			 */
 			if (dne) {
-				if (mkdir(to.p_path,
-				    curr->fts_statp->st_mode | S_IRWXU) < 0)
-					err(1, "%s", to.p_path);
+				mode = curr->fts_statp->st_mode | S_IRWXU;
+				if (mkdir(to.p_path, mode) != 0) {
+					warn("%s", to.p_path);
+					(void)fts_set(ftsp, curr, FTS_SKIP);
+					badcp = rval = 1;
+					break;
+				}
 				/*
 				 * First DNE with a NULL root_stat is the root
 				 * path, so set root_stat.  We can't really
@@ -528,14 +539,19 @@ copy(char *argv[], enum op type, int fts_options, struct stat *root_stat)
 				 * first directory we created and use that.
 				 */
 				if (root_stat == NULL &&
-				    stat(to.p_path, &created_root_stat) == -1) {
-					err(1, "stat");
-				} else if (root_stat == NULL) {
-					root_stat = &created_root_stat;
+				    stat(to.p_path, &created_root_stat) != 0) {
+					warn("%s", to.p_path);
+					(void)fts_set(ftsp, curr, FTS_SKIP);
+					badcp = rval = 1;
+					break;
 				}
+				if (root_stat == NULL)
+					root_stat = &created_root_stat;
 			} else if (!S_ISDIR(to_stat.st_mode)) {
-				errno = ENOTDIR;
-				err(1, "%s", to.p_path);
+				warnc(ENOTDIR, "%s", to.p_path);
+				(void)fts_set(ftsp, curr, FTS_SKIP);
+				badcp = rval = 1;
+				break;
 			}
 			/*
 			 * Arrange to correct directory attributes later
@@ -583,7 +599,7 @@ copy(char *argv[], enum op type, int fts_options, struct stat *root_stat)
 }
 
 static void
-siginfo(int sig __attribute__((unused)))
+siginfo(int sig __unused)
 {
 
 	info = 1;

@@ -37,8 +37,6 @@ static char sccsid[] = "@(#)find.c	8.5 (Berkeley) 8/5/94";
 #endif
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/types.h>
 #include <sys/stat.h>
 
@@ -52,7 +50,7 @@ __FBSDID("$FreeBSD$");
 
 #include "find.h"
 
-static int find_compare(const FTSENT **s1, const FTSENT **s2);
+static int find_compare(const FTSENT * const *s1, const FTSENT * const *s2);
 
 /*
  * find_compare --
@@ -61,7 +59,7 @@ static int find_compare(const FTSENT **s1, const FTSENT **s2);
  *	order within each directory.
  */
 static int
-find_compare(const FTSENT **s1, const FTSENT **s2)
+find_compare(const FTSENT * const *s1, const FTSENT * const *s2)
 {
 
 	return (strcoll((*s1)->fts_name, (*s2)->fts_name));
@@ -174,6 +172,7 @@ find_execute(PLAN *plan, char *paths[])
 {
 	FTSENT *entry;
 	PLAN *p;
+	size_t counter = 0;
 	int e;
 
 	tree = fts_open(paths, ftsoptions, (issort ? find_compare : NULL));
@@ -215,6 +214,14 @@ find_execute(PLAN *plan, char *paths[])
 			continue;
 #endif /* FTS_W */
 		}
+
+		if (showinfo) {
+			fprintf(stderr, "Scanning: %s/%s\n", entry->fts_path, entry->fts_name);
+			fprintf(stderr, "Scanned: %zu\n\n", counter);
+			showinfo = 0;
+		}
+		++counter;
+
 #define	BADCH	" \t\n\\'\""
 		if (isxargs && strpbrk(entry->fts_path, BADCH)) {
 			(void)fflush(stdout);
@@ -235,9 +242,7 @@ find_execute(PLAN *plan, char *paths[])
 	}
 	e = errno;
 	finish_execplus();
-	if (e && (!ignore_readdir_race || e != ENOENT)) {
-		errno = e;
-		err(1, "fts_read");
-	}
+	if (e && (!ignore_readdir_race || e != ENOENT))
+		errc(1, e, "fts_read");
 	return (exitstatus);
 }

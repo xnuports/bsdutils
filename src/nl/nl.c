@@ -1,5 +1,5 @@
 /*-
- * SPDX-License-Identifier: BSD-2-Clause-NetBSD
+ * SPDX-License-Identifier: BSD-2-Clause
  *
  * Copyright (c) 1999 The NetBSD Foundation, Inc.
  * All rights reserved.
@@ -34,7 +34,6 @@
 __COPYRIGHT(
 "@(#) Copyright (c) 1999\
  The NetBSD Foundation, Inc.  All rights reserved.");
-__RCSID("$FreeBSD$");
 #endif    
 
 #include <sys/types.h>
@@ -49,6 +48,8 @@ __RCSID("$FreeBSD$");
 #include <string.h>
 #include <unistd.h>
 #include <wchar.h>
+
+#include <capsicum_helpers.h>
 
 typedef enum {
 	number_all,		/* number all lines */
@@ -151,19 +152,15 @@ main(int argc, char *argv[])
 			break;
 		case 'd':
 			clen = mbrlen(optarg, MB_CUR_MAX, NULL);
-			if (clen == (size_t)-1 || clen == (size_t)-2) {
-				errno = EILSEQ;
-				err(EXIT_FAILURE, NULL);
-			}
+			if (clen == (size_t)-1 || clen == (size_t)-2)
+				errc(EXIT_FAILURE, EILSEQ, NULL);
 			if (clen != 0) {
 				memcpy(delim1, optarg, delim1len = clen);
 				clen = mbrlen(optarg + delim1len,
 				    MB_CUR_MAX, NULL);
 				if (clen == (size_t)-1 ||
-				    clen == (size_t)-2) {
-					errno = EILSEQ;
-					err(EXIT_FAILURE, NULL);
-				}
+				    clen == (size_t)-2)
+					errc(EXIT_FAILURE, EILSEQ, NULL);
 				if (clen != 0) {
 					memcpy(delim2, optarg + delim1len,
 					    delim2len = clen);
@@ -255,6 +252,11 @@ main(int argc, char *argv[])
 		usage();
 		/* NOTREACHED */
 	}
+
+	/* Limit standard descriptors and enter capability mode */
+	caph_cache_catpages();
+	if (caph_limit_stdio() < 0 || caph_enter() < 0)
+		err(EXIT_FAILURE, "capsicum");
 
 	/* Generate the delimiter sequence */
 	memcpy(delim, delim1, delim1len);

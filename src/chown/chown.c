@@ -42,8 +42,6 @@ static char sccsid[] = "@(#)chown.c	8.8 (Berkeley) 4/4/94";
 #endif
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/stat.h>
 
@@ -62,8 +60,6 @@ __FBSDID("$FreeBSD$");
 #include <string.h>
 #include <unistd.h>
 
-#include "compat.h"
-
 static void	a_gid(const char *);
 static void	a_uid(const char *);
 static void	chownerr(const char *);
@@ -78,7 +74,7 @@ static const char *gname;
 static volatile sig_atomic_t siginfo;
 
 static void
-siginfo_handler(int sig __attribute__((unused)))
+siginfo_handler(int sig __unused)
 {
 
 	siginfo = 1;

@@ -35,9 +35,6 @@
 #if defined(LIBC_SCCS) && !defined(lint)
 static char sccsid[] = "@(#)merge.c	8.2 (Berkeley) 2/14/94";
 #endif /* LIBC_SCCS and not lint */
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 /*
  * Hybrid exponential search/linear search merge sort with hybrid
  * natural/pairwise first pass.  Requires about .3% more comparisons
@@ -52,15 +49,11 @@ __FBSDID("$FreeBSD$");
  * (The default is pairwise merging.)
  */
 
-#include <sys/types.h>
 #include <sys/param.h>
 
 #include <errno.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdint.h>
-
-#include "compat.h"
 
 #ifdef I_AM_MERGESORT_B
 #include "block_abi.h"
@@ -134,7 +127,7 @@ mergesort(void *base, size_t nmemb, size_t size, cmp_t cmp)
 		return (0);
 
 	iflag = 0;
-	if (!(size % ISIZE) && !(((char *)base - (char *)0) % ISIZE))
+	if (__is_aligned(size, ISIZE) && __is_aligned(base, ISIZE))
 		iflag = 1;
 
 	if ((list2 = malloc(nmemb * size + PSIZE)) == NULL)

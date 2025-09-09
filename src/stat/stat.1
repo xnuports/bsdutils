@@ -27,8 +27,6 @@
 .\" ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 .\" POSSIBILITY OF SUCH DAMAGE.
 .\"
-.\" $FreeBSD$
-.\"
 .Dd June 22, 2017
 .Dt STAT 1
 .Os
@@ -38,7 +36,7 @@
 .Nd display file status
 .Sh SYNOPSIS
 .Nm
-.Op Fl FLnq
+.Op Fl FHLnq
 .Op Fl f Ar format | Fl l | r | s | x
 .Op Fl t Ar timefmt
 .Op Ar
@@ -124,6 +122,13 @@ The use of
 .Fl F
 implies
 .Fl l .
+.It Fl H
+Treat each argument as the hexadecimal representation of an NFS file handle,
+and use
+.Xr fhstat 2
+instead of
+.Xr lstat 2 .
+This requires root privileges.
 .It Fl L
 Use
 .Xr stat 2

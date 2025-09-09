@@ -1,5 +1,5 @@
 /*-
- * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ * SPDX-License-Identifier: BSD-2-Clause
  *
  * Copyright (c) 2002 Tim J. Robbins.
  * All rights reserved.
@@ -27,8 +27,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/types.h>
 #include <sys/ioctl.h>
@@ -45,10 +43,9 @@ __FBSDID("$FreeBSD$");
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <timeconv.h>
 #include <unistd.h>
 #include <utmpx.h>
-
-#include "compat.h"
 
 static void	heading(void);
 static void	process_utmp(void);
@@ -119,7 +116,7 @@ main(int argc, char *argv[])
 		usage();
 
 	if (*argv != NULL) {
-		if (utmpxname(*argv) == 0)
+		if (setutxdb(UTXDB_ACTIVE, *argv) != 0)
 			err(1, "%s", *argv);
 	}
 
@@ -172,10 +169,8 @@ row(const struct utmpx *ut)
 	struct tm *tm;
 	char state;
 
-	if (d_first < 0) {
-		char *s = nl_langinfo(D_FMT);
-		d_first = (strchr(s, 'd') < strchr(s, 'm'));
-	}
+	if (d_first < 0)
+		d_first = (*nl_langinfo(D_MD_ORDER) == 'd');
 
 	state = '?';
 	idle = 0;
@@ -219,6 +214,8 @@ ttystat(char *line)
 	struct stat sb;
 	char ttybuf[MAXPATHLEN];
 
+	if (line == NULL)
+		return (0);
 	(void)snprintf(ttybuf, sizeof(ttybuf), "%s%s", _PATH_DEV, line);
 	if (stat(ttybuf, &sb) == 0) {
 		return (0);
@@ -232,9 +229,10 @@ process_utmp(void)
 	struct utmpx *utx;
 
 	while ((utx = getutxent()) != NULL) {
-		if (((aflag || !bflag) && utx->ut_type == USER_PROCESS) ||
-		    (bflag && utx->ut_type == BOOT_TIME))
+		if ((aflag || !bflag) && utx->ut_type == USER_PROCESS) {
 			if (ttystat(utx->ut_line) == 0)
+				row(utx);
+		} else if (bflag && utx->ut_type == BOOT_TIME)
 				row(utx);
 	}
 }
@@ -291,7 +289,7 @@ whoami(void)
 	else
 		name = "?";
 	strlcpy(ut.ut_user, name, sizeof ut.ut_user);
-	gettimeofday((struct timeval *)&ut.ut_tv, NULL);
+	gettimeofday(&ut.ut_tv, NULL);
 	row(&ut);
 }
 

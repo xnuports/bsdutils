@@ -45,9 +45,6 @@ static char sccsid[] = "@(#)join.c	8.6 (Berkeley) 5/4/95";
 #endif
 #endif /* not lint */
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
-#include <sys/types.h>
 #include <sys/param.h>
 
 #include <err.h>
@@ -115,7 +112,7 @@ static void outoneline(INPUT *, LINE *);
 static void outtwoline(INPUT *, LINE *, INPUT *, LINE *);
 static void slurp(INPUT *);
 static wchar_t *towcs(const char *);
-static void usage(void);
+static void usage(void) __dead2;
 
 int
 main(int argc, char *argv[])
@@ -277,9 +274,9 @@ static void
 slurp(INPUT *F)
 {
 	LINE *lp, *lastlp, tmp;
-	size_t len = 0;
+	size_t len;
 	int cnt;
-	char *bp = NULL, *fieldp;
+	char *bp, *fieldp;
 
 	/*
 	 * Read all of the lines from an input file that have the same
@@ -322,7 +319,7 @@ slurp(INPUT *F)
 			F->pushbool = 0;
 			continue;
 		}
-		if (getline(&bp, &len, F->fp) == -1)
+		if ((bp = fgetln(F->fp, &len)) == NULL)
 			return;
 		if (lp->linealloc <= len + 1) {
 			lp->linealloc += MAX(100, len + 1 - lp->linealloc);
@@ -374,10 +371,8 @@ mbssep(char **stringp, const wchar_t *delim)
 		return (NULL);
 	for (tok = s;;) {
 		n = mbrtowc(&c, s, MB_LEN_MAX, NULL);
-		if (n == (size_t)-1 || n == (size_t)-2) {
-			errno = EILSEQ;
-			err(1, NULL);	/* XXX */
-		}
+		if (n == (size_t)-1 || n == (size_t)-2)
+			errc(1, EILSEQ, NULL);	/* XXX */
 		s += n;
 		spanp = delim;
 		do {
@@ -397,9 +392,9 @@ static int
 cmp(LINE *lp1, u_long fieldno1, LINE *lp2, u_long fieldno2)
 {
 	if (lp1->fieldcnt <= fieldno1)
-		return (lp2->fieldcnt <= fieldno2 ? 0 : 1);
+		return (lp2->fieldcnt <= fieldno2 ? 0 : -1);
 	if (lp2->fieldcnt <= fieldno2)
-		return (-1);
+		return (1);
 	return (mbscoll(lp1->fields[fieldno1], lp2->fields[fieldno2]));
 }
 

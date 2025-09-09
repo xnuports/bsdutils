@@ -42,12 +42,6 @@ static char sccsid[] = "@(#)xinstall.c	8.1 (Berkeley) 7/21/93";
 #endif /* not lint */
 #endif
 
-#include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
-#include <sys/param.h>
-#include <sys/mman.h>
-#include <sys/mount.h>
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/wait.h>
@@ -57,8 +51,17 @@ __FBSDID("$FreeBSD$");
 #include <fcntl.h>
 #include <grp.h>
 #include <libgen.h>
+#ifdef WITH_MD5
+#include <md5.h>
+#endif
 #include <paths.h>
 #include <pwd.h>
+#ifdef WITH_RIPEMD160
+#include <ripemd.h>
+#endif
+#include <sha.h>
+#include <sha256.h>
+#include <sha512.h>
 #include <spawn.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -68,9 +71,7 @@ __FBSDID("$FreeBSD$");
 #include <unistd.h>
 #include <vis.h>
 
-#include <openssl/evp.h>
-
-#include "compat.h"
+#include "mtree.h"
 
 /*
  * Memory strategy threshold, in pages: if physmem is larger then this, use a
@@ -111,7 +112,17 @@ __FBSDID("$FreeBSD$");
 #define	NOCHANGEBITS	(UF_IMMUTABLE | UF_APPEND | SF_IMMUTABLE | SF_APPEND)
 #define	BACKUP_SUFFIX	".old"
 
-typedef EVP_MD_CTX *DIGEST_CTX;
+typedef union {
+#ifdef WITH_MD5
+	MD5_CTX		MD5;
+#endif
+#ifdef WITH_RIPEMD160
+	RIPEMD160_CTX	RIPEMD160;
+#endif
+	SHA1_CTX	SHA1;
+	SHA256_CTX	SHA256;
+	SHA512_CTX	SHA512;
+}	DIGEST_CTX;
 
 static enum {
 	DIGEST_NONE = 0,
@@ -142,7 +153,6 @@ static char *destdir, *digest, *fflags, *metafile, *tags;
 static int	compare(int, const char *, size_t, int, const char *, size_t,
 		    char **);
 static char	*copy(int, const char *, int, const char *, off_t);
-static int	create_newfile(const char *, int, struct stat *);
 static int	create_tempfile(const char *, char *, size_t);
 static char	*quiet_mktemp(char *template);
 static char	*digest_file(const char *);
@@ -158,7 +168,6 @@ static void	metadata_log(const char *, const char *, struct timespec *,
 		    const char *, const char *, off_t);
 static int	parseid(const char *, id_t *);
 static int	strip(const char *, int, const char *, char **);
-static int	trymmap(size_t);
 static void	usage(void);
 
 int
@@ -174,8 +183,9 @@ main(int argc, char *argv[])
 
 	fset = 0;
 	iflags = 0;
+	set = NULL;
 	group = owner = NULL;
-	while ((ch = getopt(argc, argv, "B:bCcD:dg:h:l:M:m:o:pSsT:Uv")) !=
+	while ((ch = getopt(argc, argv, "B:bCcD:df:g:h:l:M:m:N:o:pSsT:Uv")) !=
 	     -1)
 		switch((char)ch) {
 		case 'B':
@@ -196,12 +206,10 @@ main(int argc, char *argv[])
 		case 'd':
 			dodir = 1;
 			break;
-#if 0
 		case 'f':
 			haveopt_f = 1;
 			fflags = optarg;
 			break;
-#endif
 		case 'g':
 			haveopt_g = 1;
 			group = optarg;
@@ -242,19 +250,16 @@ main(int argc, char *argv[])
 			break;
 		case 'm':
 			haveopt_m = 1;
+			free(set);
 			if (!(set = setmode(optarg)))
 				errx(EX_USAGE, "invalid file mode: %s",
 				     optarg);
-			mode = getmode(set, 0);
-			free(set);
 			break;
-#if 0
 		case 'N':
 			if (!setup_getid(optarg))
 				err(EX_OSERR, "Unable to use user and group "
 				    "databases in `%s'", optarg);
 			break;
-#endif
 		case 'o':
 			haveopt_o = 1;
 			owner = optarg;
@@ -290,6 +295,14 @@ main(int argc, char *argv[])
 		usage();
 	}
 
+	/*
+	 * Default permissions based on whether we're a directory or not, since
+	 * an +X may mean that we need to set the execute bit.
+	 */
+	if (set != NULL)
+		mode = getmode(set, dodir ? S_IFDIR : 0) & ~S_IFDIR;
+	free(set);
+
 	if (getenv("DONTSTRIP") != NULL) {
 		warnx("DONTSTRIP set - will not strip installed binaries");
 		dostrip = 0;
@@ -322,44 +335,32 @@ main(int argc, char *argv[])
 		}
 	}
 
-	/* need to make a temp copy so we can compare stripped version */
-	if (docompare && dostrip)
-		safecopy = 1;
-
 	/* get group and owner id's */
 	if (group != NULL && !dounpriv) {
-		struct group *gr = getgrnam(group);
-		if (!gr) {
+		if (gid_from_group(group, &gid) == -1) {
 			id_t id;
 			if (!parseid(group, &id))
 				errx(1, "unknown group %s", group);
 			gid = id;
-		} else {
-			gid = gr->gr_gid;
 		}
 	} else
 		gid = (gid_t)-1;
 
 	if (owner != NULL && !dounpriv) {
-		struct passwd *pw = getpwnam(owner);
-		if (!pw) {
+		if (uid_from_user(owner, &uid) == -1) {
 			id_t id;
 			if (!parseid(owner, &id))
 				errx(1, "unknown user %s", owner);
 			uid = id;
-		} else {
-			uid = pw->pw_uid;
 		}
 	} else
 		uid = (uid_t)-1;
 
-#if 0
 	if (fflags != NULL && !dounpriv) {
 		if (strtofflags(&fflags, &fset, NULL))
 			errx(EX_USAGE, "%s: invalid flag", fflags);
 		iflags |= SETFLAGS;
 	}
-#endif
 
 	if (metafile != NULL) {
 		if ((metafp = fopen(metafile, "a")) == NULL)
@@ -382,8 +383,8 @@ main(int argc, char *argv[])
 				err(EX_OSERR, "%s vanished", to_name);
 			if (S_ISLNK(to_sb.st_mode)) {
 				if (argc != 2) {
-					errno = ENOTDIR;
-					err(EX_USAGE, "%s", to_name);
+					errc(EX_CANTCREAT, ENOTDIR, "%s",
+					    to_name);
 				}
 				install(*argv, to_name, fset, iflags);
 				exit(EX_OK);
@@ -409,13 +410,13 @@ main(int argc, char *argv[])
 	if (!no_target && !dolink) {
 		if (stat(*argv, &from_sb))
 			err(EX_OSERR, "%s", *argv);
-		if (!S_ISREG(to_sb.st_mode)) {
-			errx(EX_OSERR, "%s: not a regular file", to_name);
-		}
+		if (!S_ISREG(to_sb.st_mode))
+			errc(EX_CANTCREAT, EFTYPE, "%s", to_name);
 		if (to_sb.st_dev == from_sb.st_dev &&
-		    to_sb.st_ino == from_sb.st_ino)
-			errx(EX_USAGE, 
-			    "%s and %s are the same file", *argv, to_name);
+		    to_sb.st_ino == from_sb.st_ino) {
+			errx(EX_USAGE, "%s and %s are the same file",
+			    *argv, to_name);
+		}
 	}
 	install(*argv, to_name, fset, iflags);
 	exit(EX_OK);
@@ -425,110 +426,107 @@ main(int argc, char *argv[])
 static char *
 digest_file(const char *name)
 {
-	DIGEST_CTX ctx;
-	FILE *f;
-	char *buf;
 
-	if (digesttype == DIGEST_NONE)
-		return NULL;
-
-	f = fopen(name, "rb");
-	if (!f)
-		errx(1, "unable to open file %s", name);
-
-	buf = malloc(16 * 1024);
-	if (!buf) {
-		fclose(f);
-		errx(1, "unable to allocate buffer");
+	switch (digesttype) {
+#ifdef WITH_MD5
+	case DIGEST_MD5:
+		return (MD5File(name, NULL));
+#endif
+#ifdef WITH_RIPEMD160
+	case DIGEST_RIPEMD160:
+		return (RIPEMD160_File(name, NULL));
+#endif
+	case DIGEST_SHA1:
+		return (SHA1_File(name, NULL));
+	case DIGEST_SHA256:
+		return (SHA256_File(name, NULL));
+	case DIGEST_SHA512:
+		return (SHA512_File(name, NULL));
+	default:
+		return (NULL);
 	}
-
-	digest_init(&ctx);
-	for (;;) {
-		size_t n = fread(buf, 1, 16 * 1024, f);
-		digest_update(&ctx, buf, n);
-		if (n != (16 * 1024)) {
-			if (feof(f))
-				break;
-			if (ferror(f)) {
-				free(buf);
-				fclose(f);
-				errx(1, "unable to read file %s", name);
-			}
-		}
-	}
-
-	fclose(f);
-	return digest_end(&ctx, NULL);
 }
 
 static void
 digest_init(DIGEST_CTX *c)
 {
-	const EVP_MD *digestmd = NULL;
 
 	switch (digesttype) {
 	case DIGEST_NONE:
 		break;
 #ifdef WITH_MD5
 	case DIGEST_MD5:
-		digestmd = EVP_md5();
+		MD5Init(&(c->MD5));
 		break;
 #endif
 #ifdef WITH_RIPEMD160
 	case DIGEST_RIPEMD160:
-		digestmd = EVP_ripemd160();
+		RIPEMD160_Init(&(c->RIPEMD160));
 		break;
 #endif
 	case DIGEST_SHA1:
-		digestmd = EVP_sha1();
+		SHA1_Init(&(c->SHA1));
 		break;
 	case DIGEST_SHA256:
-		digestmd = EVP_sha256();
+		SHA256_Init(&(c->SHA256));
 		break;
 	case DIGEST_SHA512:
-		digestmd = EVP_sha512();
+		SHA512_Init(&(c->SHA512));
 		break;
-	}
-
-	if (digestmd) {
-		*c = EVP_MD_CTX_new();
-		if (!c || !EVP_DigestInit_ex(*c, digestmd, NULL))
-			errx(1, "failed to initialize digest");
 	}
 }
 
 static void
 digest_update(DIGEST_CTX *c, const char *data, size_t len)
 {
-	if (digesttype == DIGEST_NONE)
-		return;
 
-	EVP_DigestUpdate(*c, data, len);
+	switch (digesttype) {
+	case DIGEST_NONE:
+		break;
+#ifdef WITH_MD5
+	case DIGEST_MD5:
+		MD5Update(&(c->MD5), data, len);
+		break;
+#endif
+#ifdef WITH_RIPEMD160
+	case DIGEST_RIPEMD160:
+		RIPEMD160_Update(&(c->RIPEMD160), data, len);
+		break;
+#endif
+	case DIGEST_SHA1:
+		SHA1_Update(&(c->SHA1), data, len);
+		break;
+	case DIGEST_SHA256:
+		SHA256_Update(&(c->SHA256), data, len);
+		break;
+	case DIGEST_SHA512:
+		SHA512_Update(&(c->SHA512), data, len);
+		break;
+	}
 }
 
 static char *
 digest_end(DIGEST_CTX *c, char *buf)
 {
-	unsigned char digbuf[EVP_MAX_MD_SIZE + 1];
 
-	if (digesttype == DIGEST_NONE || !*c)
-		return NULL;
-
-	unsigned int mdlen = 0;
-	if (!EVP_DigestFinal(*c, digbuf, &mdlen))
-		errx(1, "failed to finalize digest");
-
-	if (!buf) {
-		buf = malloc(mdlen * 2 + 1);
-		if (!buf)
-			errx(1, "unable to allocate buffer");
+	switch (digesttype) {
+#ifdef WITH_MD5
+	case DIGEST_MD5:
+		return (MD5End(&(c->MD5), buf));
+#endif
+#ifdef WITH_RIPEMD160
+	case DIGEST_RIPEMD160:
+		return (RIPEMD160_End(&(c->RIPEMD160), buf));
+#endif
+	case DIGEST_SHA1:
+		return (SHA1_End(&(c->SHA1), buf));
+	case DIGEST_SHA256:
+		return (SHA256_End(&(c->SHA256), buf));
+	case DIGEST_SHA512:
+		return (SHA512_End(&(c->SHA512), buf));
+	default:
+		return (NULL);
 	}
-
-	for (unsigned int i = 0; i < mdlen; ++i) {
-		sprintf(buf + (i * 2), "%02x", digbuf[i]);
-	}
-
-	return buf;
 }
 
 /*
@@ -573,10 +571,10 @@ static int
 do_link(const char *from_name, const char *to_name,
     const struct stat *target_sb)
 {
-	char tmpl[MAXPATHLEN + 12];
+	char tmpl[MAXPATHLEN];
 	int ret;
 
-	if (safecopy && target_sb != NULL) {
+	if (target_sb != NULL) {
 		(void)snprintf(tmpl, sizeof(tmpl), "%s.inst.XXXXXX", to_name);
 		/* This usage is safe. */
 		if (quiet_mktemp(tmpl) == NULL)
@@ -623,7 +621,7 @@ do_symlink(const char *from_name, const char *to_name,
 {
 	char tmpl[MAXPATHLEN];
 
-	if (safecopy && target_sb != NULL) {
+	if (target_sb != NULL) {
 		(void)snprintf(tmpl, sizeof(tmpl), "%s.inst.XXXXXX", to_name);
 		/* This usage is safe. */
 		if (quiet_mktemp(tmpl) == NULL)
@@ -666,8 +664,10 @@ static void
 makelink(const char *from_name, const char *to_name,
     const struct stat *target_sb)
 {
-	char	src[MAXPATHLEN], dst[MAXPATHLEN], lnk[MAXPATHLEN];
-	struct stat	to_sb;
+	char src[MAXPATHLEN], dst[MAXPATHLEN], lnk[MAXPATHLEN];
+	char *to_name_copy, *d, *ld, *ls, *s;
+	const char *base, *dir;
+	struct stat to_sb;
 
 	/* Try hard links first. */
 	if (dolink & (LN_HARD|LN_MIXED)) {
@@ -728,8 +728,6 @@ makelink(const char *from_name, const char *to_name,
 	}
 
 	if (dolink & LN_RELATIVE) {
-		char *to_name_copy, *cp, *d, *ld, *ls, *s;
-
 		if (*from_name != '/') {
 			/* this is already a relative link */
 			do_symlink(from_name, to_name, target_sb);
@@ -749,16 +747,23 @@ makelink(const char *from_name, const char *to_name,
 		to_name_copy = strdup(to_name);
 		if (to_name_copy == NULL)
 			err(EX_OSERR, "%s: strdup", to_name);
-		cp = dirname(to_name_copy);
-		if (realpath(cp, dst) == NULL)
-			err(EX_OSERR, "%s: realpath", cp);
-		/* .. and add the last component. */
-		if (strcmp(dst, "/") != 0) {
-			if (strlcat(dst, "/", sizeof(dst)) > sizeof(dst))
+		base = basename(to_name_copy);
+		if (base == to_name_copy) {
+			/* destination is a file in cwd */
+			(void)strlcpy(dst, "./", sizeof(dst));
+		} else if (base == to_name_copy + 1) {
+			/* destination is a file in the root */
+			(void)strlcpy(dst, "/", sizeof(dst));
+		} else {
+			/* all other cases: safe to call dirname() */
+			dir = dirname(to_name_copy);
+			if (realpath(dir, dst) == NULL)
+				err(EX_OSERR, "%s: realpath", dir);
+			if (strcmp(dst, "/") != 0 &&
+			    strlcat(dst, "/", sizeof(dst)) >= sizeof(dst))
 				errx(1, "resolved pathname too long");
 		}
-		strcpy(to_name_copy, to_name);
-		if (strlcat(dst, cp, sizeof(dst)) > sizeof(dst))
+		if (strlcat(dst, base, sizeof(dst)) >= sizeof(dst))
 			errx(1, "resolved pathname too long");
 		free(to_name_copy);
 
@@ -806,12 +811,12 @@ makelink(const char *from_name, const char *to_name,
  *	build a path name and install the file
  */
 static void
-install(const char *from_name, const char *to_name, u_long fset __attribute__((unused)), u_int flags)
+install(const char *from_name, const char *to_name, u_long fset, u_int flags)
 {
 	struct stat from_sb, temp_sb, to_sb;
 	struct timespec tsb[2];
 	int devnull, files_match, from_fd, serrno, stripped, target;
-	int tempcopy, temp_fd, to_fd;
+	int temp_fd, to_fd;
 	char backup[MAXPATHLEN], *p, pathbuf[MAXPATHLEN], tempfile[MAXPATHLEN];
 	char *digestresult;
 
@@ -825,9 +830,8 @@ install(const char *from_name, const char *to_name, u_long fset __attribute__((u
 		if (!dolink) {
 			if (stat(from_name, &from_sb))
 				err(EX_OSERR, "%s", from_name);
-			if (!S_ISREG(from_sb.st_mode)) {
-				errx(EX_OSERR, "%s: not a regular file", from_name);
-			}
+			if (!S_ISREG(from_sb.st_mode))
+				errc(EX_OSERR, EFTYPE, "%s", from_name);
 		}
 		/* Build the target path. */
 		if (flags & DIRECTORY) {
@@ -841,31 +845,18 @@ install(const char *from_name, const char *to_name, u_long fset __attribute__((u
 	} else {
 		devnull = 1;
 	}
+	if (*to_name == '\0')
+		errx(EX_USAGE, "destination cannot be an empty string");
 
 	target = (lstat(to_name, &to_sb) == 0);
 
 	if (dolink) {
-		if (target && !safecopy) {
-			if (to_sb.st_mode & S_IFDIR && rmdir(to_name) == -1)
-				err(EX_OSERR, "%s", to_name);
-#if HAVE_STRUCT_STAT_ST_FLAGS
-			if (to_sb.st_flags & NOCHANGEBITS)
-				(void)chflags(to_name,
-				    to_sb.st_flags & ~NOCHANGEBITS);
-#endif
-			unlink(to_name);
-		}
 		makelink(from_name, to_name, target ? &to_sb : NULL);
 		return;
 	}
 
-	if (target && !S_ISREG(to_sb.st_mode) && !S_ISLNK(to_sb.st_mode)) {
-		warnx("%s: not a regular file or a symlink", to_name);
-		return;
-	}
-
-	/* Only copy safe if the target exists. */
-	tempcopy = safecopy && target;
+	if (target && !S_ISREG(to_sb.st_mode) && !S_ISLNK(to_sb.st_mode))
+		errc(EX_CANTCREAT, EFTYPE, "%s", to_name);
 
 	if (!devnull && (from_fd = open(from_name, O_RDONLY, 0)) < 0)
 		err(EX_OSERR, "%s", from_name);
@@ -887,40 +878,32 @@ install(const char *from_name, const char *to_name, u_long fset __attribute__((u
 	}
 
 	if (!files_match) {
-		if (tempcopy) {
-			to_fd = create_tempfile(to_name, tempfile,
-			    sizeof(tempfile));
-			if (to_fd < 0)
-				err(EX_OSERR, "%s", tempfile);
-		} else {
-			if ((to_fd = create_newfile(to_name, target,
-			    &to_sb)) < 0)
-				err(EX_OSERR, "%s", to_name);
-			if (verbose)
-				(void)printf("install: %s -> %s\n",
-				    from_name, to_name);
-		}
+		to_fd = create_tempfile(to_name, tempfile,
+		    sizeof(tempfile));
+		if (to_fd < 0)
+			err(EX_OSERR, "%s", dirname(tempfile));
 		if (!devnull) {
-			if (dostrip)
-			    stripped = strip(tempcopy ? tempfile : to_name,
-				to_fd, from_name, &digestresult);
-			if (!stripped)
-			    digestresult = copy(from_fd, from_name, to_fd,
-				tempcopy ? tempfile : to_name, from_sb.st_size);
+			if (dostrip) {
+				stripped = strip(tempfile, to_fd, from_name,
+				    &digestresult);
+			}
+			if (!stripped) {
+				digestresult = copy(from_fd, from_name, to_fd,
+				    tempfile, from_sb.st_size);
+			}
 		}
 	}
 
 	if (dostrip) {
 		if (!stripped)
-			(void)strip(tempcopy ? tempfile : to_name, to_fd,
-			    NULL, &digestresult);
+			(void)strip(tempfile, to_fd, NULL, &digestresult);
 
 		/*
 		 * Re-open our fd on the target, in case
 		 * we did not strip in-place.
 		 */
 		close(to_fd);
-		to_fd = open(tempcopy ? tempfile : to_name, O_RDONLY, 0);
+		to_fd = open(tempfile, O_RDONLY, 0);
 		if (to_fd < 0)
 			err(EX_OSERR, "stripping %s", to_name);
 	}
@@ -964,16 +947,16 @@ install(const char *from_name, const char *to_name, u_long fset __attribute__((u
 		digestresult = digest_file(tempfile);
 
 	/*
-	 * Move the new file into place if doing a safe copy
-	 * and the files are different (or just not compared).
+	 * Move the new file into place if the files are different (or
+	 * just not compared).
 	 */
-	if (tempcopy && !files_match) {
+	if (!files_match) {
 #if HAVE_STRUCT_STAT_ST_FLAGS
 		/* Try to turn off the immutable bits. */
 		if (to_sb.st_flags & NOCHANGEBITS)
 			(void)chflags(to_name, to_sb.st_flags & ~NOCHANGEBITS);
 #endif
-		if (dobackup) {
+		if (target && dobackup) {
 			if ((size_t)snprintf(backup, MAXPATHLEN, "%s%s", to_name,
 			    suffix) != strlen(to_name) + strlen(suffix)) {
 				unlink(tempfile);
@@ -1108,90 +1091,66 @@ install(const char *from_name, const char *to_name, u_long fset __attribute__((u
  *	unless it points to pre-computed digest.
  */
 static int
-compare(int from_fd, const char *from_name __attribute__((unused)), size_t from_len,
-	int to_fd, const char *to_name __attribute__((unused)), size_t to_len,
+compare(int from_fd, const char *from_name __unused, size_t from_len,
+	int to_fd, const char *to_name __unused, size_t to_len,
 	char **dresp)
 {
-	char *p, *q;
 	int rv;
-	int do_digest, done_compare;
-	DIGEST_CTX ctx = NULL;
+	int do_digest;
+	DIGEST_CTX ctx;
 
-	rv = 0;
 	if (from_len != to_len)
 		return 1;
 
 	do_digest = (digesttype != DIGEST_NONE && dresp != NULL &&
 	    *dresp == NULL);
 	if (from_len <= MAX_CMP_SIZE) {
+		static char *buf, *buf1, *buf2;
+		static size_t bufsize;
+		int n1, n2;
+
 		if (do_digest)
 			digest_init(&ctx);
-		done_compare = 0;
-		if (trymmap(from_len) && trymmap(to_len)) {
-			p = mmap(NULL, from_len, PROT_READ, MAP_SHARED,
-			    from_fd, (off_t)0);
-			if (p == MAP_FAILED)
-				goto out;
-			q = mmap(NULL, from_len, PROT_READ, MAP_SHARED,
-			    to_fd, (off_t)0);
-			if (q == MAP_FAILED) {
-				munmap(p, from_len);
-				goto out;
-			}
 
-			rv = memcmp(p, q, from_len);
-			if (do_digest)
-				digest_update(&ctx, p, from_len);
-			munmap(p, from_len);
-			munmap(q, from_len);
-			done_compare = 1;
+		if (buf == NULL) {
+			/*
+			 * Note that buf and bufsize are static. If
+			 * malloc() fails, it will fail at the start
+			 * and not copy only some files.
+			 */
+			if (sysconf(_SC_PHYS_PAGES) > PHYSPAGES_THRESHOLD)
+				bufsize = MIN(BUFSIZE_MAX, MAXPHYS * 8);
+			else
+				bufsize = BUFSIZE_SMALL;
+			buf = malloc(bufsize * 2);
+			if (buf == NULL)
+				err(1, "Not enough memory");
+			buf1 = buf;
+			buf2 = buf + bufsize;
 		}
-	out:
-		if (!done_compare) {
-			static char *buf, *buf1, *buf2;
-			static size_t bufsize;
-			int n1, n2;
-
-			if (buf == NULL) {
-				/*
-				 * Note that buf and bufsize are static. If
-				 * malloc() fails, it will fail at the start
-				 * and not copy only some files.
-				 */
-				if (sysconf(_SC_PHYS_PAGES) >
-				    PHYSPAGES_THRESHOLD)
-					bufsize = MIN(BUFSIZE_MAX, MAXPHYS * 8);
+		rv = 0;
+		lseek(from_fd, 0, SEEK_SET);
+		lseek(to_fd, 0, SEEK_SET);
+		while (rv == 0) {
+			n1 = read(from_fd, buf1, bufsize);
+			if (n1 == 0)
+				break;		/* EOF */
+			else if (n1 > 0) {
+				n2 = read(to_fd, buf2, n1);
+				if (n2 == n1)
+					rv = memcmp(buf1, buf2, n1);
 				else
-					bufsize = BUFSIZE_SMALL;
-				buf = malloc(bufsize * 2);
-				if (buf == NULL)
-					err(1, "Not enough memory");
-				buf1 = buf;
-				buf2 = buf + bufsize;
-			}
-			rv = 0;
-			lseek(from_fd, 0, SEEK_SET);
-			lseek(to_fd, 0, SEEK_SET);
-			while (rv == 0) {
-				n1 = read(from_fd, buf1, bufsize);
-				if (n1 == 0)
-					break;		/* EOF */
-				else if (n1 > 0) {
-					n2 = read(to_fd, buf2, n1);
-					if (n2 == n1)
-						rv = memcmp(buf1, buf2, n1);
-					else
-						rv = 1;	/* out of sync */
-				} else
-					rv = 1;		/* read failure */
-				if (do_digest)
-					digest_update(&ctx, buf1, n1);
-			}
-			lseek(from_fd, 0, SEEK_SET);
-			lseek(to_fd, 0, SEEK_SET);
+					rv = 1;	/* out of sync */
+			} else
+				rv = 1;		/* read failure */
+			if (do_digest)
+				digest_update(&ctx, buf1, n1);
 		}
-	} else
+		lseek(from_fd, 0, SEEK_SET);
+		lseek(to_fd, 0, SEEK_SET);
+	} else {
 		rv = 1;	/* don't bother in this case */
+	}
 
 	if (do_digest) {
 		if (rv == 0)
@@ -1224,65 +1183,6 @@ create_tempfile(const char *path, char *temp, size_t tsize)
 }
 
 /*
- * create_newfile --
- *	create a new file, overwriting an existing one if necessary
- */
-static int
-create_newfile(const char *path, int target, struct stat *sbp __attribute__((unused)))
-{
-	char backup[MAXPATHLEN];
-	int saved_errno = 0;
-	int newfd;
-
-	if (target) {
-		/*
-		 * Unlink now... avoid ETXTBSY errors later.  Try to turn
-		 * off the append/immutable bits -- if we fail, go ahead,
-		 * it might work.
-		 */
-#if HAVE_STRUCT_STAT_ST_FLAGS
-		if (sbp->st_flags & NOCHANGEBITS)
-			(void)chflags(path, sbp->st_flags & ~NOCHANGEBITS);
-#endif
-
-		if (dobackup) {
-			if ((size_t)snprintf(backup, MAXPATHLEN, "%s%s",
-			    path, suffix) != strlen(path) + strlen(suffix)) {
-				saved_errno = errno;
-#if HAVE_STRUCT_STAT_ST_FLAGS
-				if (sbp->st_flags & NOCHANGEBITS)
-					(void)chflags(path, sbp->st_flags);
-#endif
-				errno = saved_errno;
-				errx(EX_OSERR, "%s: backup filename too long",
-				    path);
-			}
-			(void)snprintf(backup, MAXPATHLEN, "%s%s",
-			    path, suffix);
-			if (verbose)
-				(void)printf("install: %s -> %s\n",
-				    path, backup);
-			if (rename(path, backup) < 0) {
-				saved_errno = errno;
-#if HAVE_STRUCT_STAT_ST_FLAGS
-				if (sbp->st_flags & NOCHANGEBITS)
-					(void)chflags(path, sbp->st_flags);
-#endif
-				errno = saved_errno;
-				err(EX_OSERR, "rename: %s to %s", path, backup);
-			}
-		} else
-			if (unlink(path) < 0)
-				saved_errno = errno;
-	}
-
-	newfd = open(path, O_CREAT | O_RDWR | O_TRUNC, S_IRUSR | S_IWUSR);
-	if (newfd < 0 && saved_errno != 0)
-		errno = saved_errno;
-	return newfd;
-}
-
-/*
  * copy --
  *	copy from one file to another
  */
@@ -1294,78 +1194,77 @@ copy(int from_fd, const char *from_name, int to_fd, const char *to_name,
 	static size_t bufsize;
 	int nr, nw;
 	int serrno;
-	char *p;
-	int done_copy;
+#ifndef BOOTSTRAP_XINSTALL
+	ssize_t ret;
+#endif
 	DIGEST_CTX ctx;
 
 	/* Rewind file descriptors. */
-	if (lseek(from_fd, (off_t)0, SEEK_SET) == (off_t)-1)
+	if (lseek(from_fd, 0, SEEK_SET) < 0)
 		err(EX_OSERR, "lseek: %s", from_name);
-	if (lseek(to_fd, (off_t)0, SEEK_SET) == (off_t)-1)
+	if (lseek(to_fd, 0, SEEK_SET) < 0)
 		err(EX_OSERR, "lseek: %s", to_name);
 
+#ifndef BOOTSTRAP_XINSTALL
+	/* Try copy_file_range() if no digest is requested */
+	if (digesttype == DIGEST_NONE) {
+		do {
+			ret = copy_file_range(from_fd, NULL, to_fd, NULL,
+			    (size_t)size, 0);
+		} while (ret > 0);
+		if (ret == 0)
+			goto done;
+		if (errno != EINVAL) {
+			serrno = errno;
+			(void)unlink(to_name);
+			errno = serrno;
+			err(EX_OSERR, "%s", to_name);
+		}
+		/* Fall back */
+	}
+#endif
 	digest_init(&ctx);
 
-	done_copy = 0;
-	if (trymmap((size_t)size) &&
-	    (p = mmap(NULL, (size_t)size, PROT_READ, MAP_SHARED,
-		    from_fd, (off_t)0)) != MAP_FAILED) {
-		nw = write(to_fd, p, size);
-		if (nw != size) {
+	if (buf == NULL) {
+		/*
+		 * Note that buf and bufsize are static. If
+		 * malloc() fails, it will fail at the start
+		 * and not copy only some files.
+		 */
+		if (sysconf(_SC_PHYS_PAGES) > PHYSPAGES_THRESHOLD)
+			bufsize = MIN(BUFSIZE_MAX, MAXPHYS * 8);
+		else
+			bufsize = BUFSIZE_SMALL;
+		buf = malloc(bufsize);
+		if (buf == NULL)
+			err(1, "Not enough memory");
+	}
+	while ((nr = read(from_fd, buf, bufsize)) > 0) {
+		if ((nw = write(to_fd, buf, nr)) != nr) {
 			serrno = errno;
 			(void)unlink(to_name);
 			if (nw >= 0) {
 				errx(EX_OSERR,
-     "short write to %s: %jd bytes written, %jd bytes asked to write",
-				    to_name, (uintmax_t)nw, (uintmax_t)size);
+				    "short write to %s: %jd bytes written, "
+				    "%jd bytes asked to write",
+				    to_name, (uintmax_t)nw,
+				    (uintmax_t)size);
 			} else {
 				errno = serrno;
 				err(EX_OSERR, "%s", to_name);
 			}
 		}
-		digest_update(&ctx, p, size);
-		(void)munmap(p, size);
-		done_copy = 1;
+		digest_update(&ctx, buf, nr);
 	}
-	if (!done_copy) {
-		if (buf == NULL) {
-			/*
-			 * Note that buf and bufsize are static. If
-			 * malloc() fails, it will fail at the start
-			 * and not copy only some files.
-			 */
-			if (sysconf(_SC_PHYS_PAGES) >
-			    PHYSPAGES_THRESHOLD)
-				bufsize = MIN(BUFSIZE_MAX, MAXPHYS * 8);
-			else
-				bufsize = BUFSIZE_SMALL;
-			buf = malloc(bufsize);
-			if (buf == NULL)
-				err(1, "Not enough memory");
-		}
-		while ((nr = read(from_fd, buf, bufsize)) > 0) {
-			if ((nw = write(to_fd, buf, nr)) != nr) {
-				serrno = errno;
-				(void)unlink(to_name);
-				if (nw >= 0) {
-					errx(EX_OSERR,
-     "short write to %s: %jd bytes written, %jd bytes asked to write",
-					    to_name, (uintmax_t)nw,
-					    (uintmax_t)size);
-				} else {
-					errno = serrno;
-					err(EX_OSERR, "%s", to_name);
-				}
-			}
-			digest_update(&ctx, buf, nr);
-		}
-		if (nr != 0) {
-			serrno = errno;
-			(void)unlink(to_name);
-			errno = serrno;
-			err(EX_OSERR, "%s", from_name);
-		}
+	if (nr != 0) {
+		serrno = errno;
+		(void)unlink(to_name);
+		errno = serrno;
+		err(EX_OSERR, "%s", from_name);
 	}
+#ifndef BOOTSTRAP_XINSTALL
+done:
+#endif
 	if (safecopy && fsync(to_fd) == -1) {
 		serrno = errno;
 		(void)unlink(to_name);
@@ -1379,7 +1278,7 @@ copy(int from_fd, const char *from_name, int to_fd, const char *to_name,
  * strip --
  *	Use strip(1) to strip the target file.
  *	Just invoke strip(1) on to_name if from_name is NULL, else try
- *	to run "strip -o to_name -- from_name" and return 0 on failure.
+ *	to run "strip -o to_name from_name" and return 0 on failure.
  *	Return 1 on success and assign result of digest_file(to_name)
  *	to *dresp.
  */
@@ -1387,10 +1286,12 @@ static int
 strip(const char *to_name, int to_fd, const char *from_name, char **dresp)
 {
 	const char *stripbin;
-	const char *args[6];
+	const char *args[5];
+	char *prefixed_from_name;
 	pid_t pid;
 	int error, serrno, status;
 
+	prefixed_from_name = NULL;
 	stripbin = getenv("STRIPBIN");
 	if (stripbin == NULL)
 		stripbin = "strip";
@@ -1401,22 +1302,29 @@ strip(const char *to_name, int to_fd, const char *from_name, char **dresp)
 	} else {
 		args[1] = "-o";
 		args[2] = to_name;
-		args[3] = "--";
-		args[4] = from_name;
-		args[5] = NULL;
+
+		/* Prepend './' if from_name begins with '-' */
+		if (from_name[0] == '-') {
+			if (asprintf(&prefixed_from_name, "./%s", from_name) == -1)
+				return (0);
+			args[3] = prefixed_from_name;
+		} else {
+			args[3] = from_name;
+		}
+		args[4] = NULL;
 	}
 	error = posix_spawnp(&pid, stripbin, NULL, NULL,
 	    __DECONST(char **, args), environ);
 	if (error != 0) {
 		(void)unlink(to_name);
-		errno = error;
-		err(EX_OSERR, "spawn %s", stripbin);
+		errc(error == EAGAIN || error == EPROCLIM || error == ENOMEM ?
+		    EX_TEMPFAIL : EX_OSERR, error, "spawn %s", stripbin);
 	}
+	free(prefixed_from_name);
 	if (waitpid(pid, &status, 0) == -1) {
 		error = errno;
 		(void)unlink(to_name);
-		errno = error;
-		err(EX_SOFTWARE, "wait");
+		errc(EX_SOFTWARE, error, "wait");
 		/* NOTREACHED */
 	}
 	if (status != 0) {
@@ -1496,15 +1404,18 @@ metadata_log(const char *path, const char *type, struct timespec *ts,
 	static const char extra[] = { ' ', '\t', '\n', '\\', '#', '\0' };
 	const char *p;
 	char *buf;
-	size_t destlen;
+	size_t buflen, destlen;
 	struct flock metalog_lock;
 
 	if (!metafp)	
 		return;
-	/* Buffer for strsvis(3). */
-	buf = (char *)malloc(4 * strlen(path) + 1);
-	if (buf == NULL) {
-		warnx("%s", strerror(ENOMEM));
+	/* Buffer for strsnvis(3), used for both path and slink. */
+	buflen = strlen(path);
+	if (slink && strlen(slink) > buflen)
+		buflen = strlen(slink);
+	buflen = 4 * buflen + 1;
+	if ((buf = malloc(buflen)) == NULL) {
+		warn(NULL);
 		return;
 	}
 
@@ -1529,24 +1440,36 @@ metadata_log(const char *path, const char *type, struct timespec *ts,
 	}
 	while (*p && *p == '/')
 		p++;
-	strsvis(buf, p, VIS_OCTAL, extra);
+	strsnvis(buf, buflen, p, VIS_OCTAL, extra);
 	p = buf;
 	/* Print details. */
 	fprintf(metafp, ".%s%s type=%s", *p ? "/" : "", p, type);
-	if (owner)
-		fprintf(metafp, " uname=%s", owner);
-	if (group)
-		fprintf(metafp, " gname=%s", group);
+	if (owner) {
+		id_t id;
+
+		if (parseid(owner, &id))
+			fprintf(metafp, " uid=%jd", (intmax_t)id);
+		else
+			fprintf(metafp, " uname=%s", owner);
+	}
+	if (group) {
+		id_t id;
+
+		if (parseid(group, &id))
+			fprintf(metafp, " gid=%jd", (intmax_t)id);
+		else
+			fprintf(metafp, " gname=%s", group);
+	}
 	fprintf(metafp, " mode=%#o", mode);
 	if (slink) {
-		strsvis(buf, slink, VIS_CSTYLE, extra);	/* encode link */
+		strsnvis(buf, buflen, slink, VIS_CSTYLE, extra);
 		fprintf(metafp, " link=%s", buf);
 	}
 	if (*type == 'f') /* type=file */
 		fprintf(metafp, " size=%lld", (long long)size);
 	if (ts != NULL && dopreserve)
 		fprintf(metafp, " time=%lld.%09ld",
-			(long long)ts[1].tv_sec, ts[1].tv_nsec);
+		    (long long)ts[1].tv_sec, ts[1].tv_nsec);
 	if (digestresult && digest)
 		fprintf(metafp, " %s=%s", digest, digestresult);
 	if (fflags)
@@ -1585,30 +1508,4 @@ usage(void)
 "               directory ...\n");
 	exit(EX_USAGE);
 	/* NOTREACHED */
-}
-
-/*
- * trymmap --
- *	return true (1) if mmap should be tried, false (0) if not.
- */
-static int
-trymmap(size_t filesize)
-{
-	/*
-	 * This function existed to skip mmap() for NFS file systems whereas
-	 * nowadays mmap() should be perfectly safe. Nevertheless, using mmap()
-	 * only reduces the number of system calls if we need multiple read()
-	 * syscalls, i.e. if the file size is > MAXBSIZE. However, mmap() is
-	 * more expensive than read() so set the threshold at 4 fewer syscalls.
-	 * Additionally, for larger file size mmap() can significantly increase
-	 * the number of page faults, so avoid it in that case.
-	 *
-	 * Note: the 8MB limit is not based on any meaningful benchmarking
-	 * results, it is simply reusing the same value that was used before
-	 * and also matches bin/cp.
-	 *
-	 * XXX: Maybe we shouldn't bother with mmap() at all, since we use
-	 * MAXBSIZE the syscall overhead of read() shouldn't be too high?
-	 */
-	return (filesize > 4 * MAXBSIZE && filesize < 8 * 1024 * 1024);
 }

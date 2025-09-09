@@ -45,8 +45,6 @@ static char sccsid[] = "@(#)kill.c	8.4 (Berkeley) 4/28/95";
 #endif /* not lint */
 #endif
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <ctype.h>
 #include <err.h>
 #include <errno.h>
@@ -60,11 +58,10 @@ __FBSDID("$FreeBSD$");
 #include "bltin/bltin.h"
 #endif
 
-#include "compat.h"
-
 static void nosig(const char *);
 static void printsignals(FILE *);
-static void usage(void);
+static int signame_to_signum(const char *);
+static void usage(void) __dead2;
 
 int
 main(int argc, char *argv[])
@@ -92,9 +89,9 @@ main(int argc, char *argv[])
 				errx(2, "illegal signal number: %s", *argv);
 			if (numsig >= 128)
 				numsig -= 128;
-			if (numsig <= 0 || numsig >= NSIG)
+			if (numsig <= 0 || numsig >= sys_nsig)
 				nosig(*argv);
-			printf("%s\n", signum_to_signame(numsig));
+			printf("%s\n", sys_signame[numsig]);
 			return (0);
 		}
 		printsignals(stdout);
@@ -158,6 +155,20 @@ main(int argc, char *argv[])
 	return (errors);
 }
 
+static int
+signame_to_signum(const char *sig)
+{
+	int n;
+
+	if (strncasecmp(sig, "SIG", 3) == 0)
+		sig += 3;
+	for (n = 1; n < sys_nsig; n++) {
+		if (!strcasecmp(sys_signame[n], sig))
+			return (n);
+	}
+	return (-1);
+}
+
 static void
 nosig(const char *name)
 {
@@ -176,9 +187,9 @@ printsignals(FILE *fp)
 {
 	int n;
 
-	for (n = 1; n < NSIG; n++) {
-		(void)fprintf(fp, "%s", signum_to_signame(n));
-		if (n == (NSIG / 2) || n == (NSIG - 1))
+	for (n = 1; n < sys_nsig; n++) {
+		(void)fprintf(fp, "%s", sys_signame[n]);
+		if (n == (sys_nsig / 2) || n == (sys_nsig - 1))
 			(void)fprintf(fp, "\n");
 		else
 			(void)fprintf(fp, " ");

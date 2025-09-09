@@ -1,5 +1,5 @@
 /*-
- * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ * SPDX-License-Identifier: BSD-2-Clause
  *
  * Copyright (C) 2009 Gabor Kovesdan <gabor@FreeBSD.org>
  * Copyright (C) 2012 Oleg Moskalenko <mom040267@gmail.com>
@@ -28,8 +28,6 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/types.h>
 
 #include <errno.h>
@@ -37,6 +35,7 @@ __FBSDID("$FreeBSD$");
 #include <langinfo.h>
 #include <limits.h>
 #include <math.h>
+#include <md5.h>
 #include <stdlib.h>
 #include <string.h>
 #include <wchar.h>
@@ -59,9 +58,7 @@ static int gnumcoll(struct key_value*, struct key_value *, size_t offset);
 static int monthcoll(struct key_value*, struct key_value *, size_t offset);
 static int numcoll(struct key_value*, struct key_value *, size_t offset);
 static int hnumcoll(struct key_value*, struct key_value *, size_t offset);
-#ifndef WITHOUT_LIBCRYPTO
 static int randomcoll(struct key_value*, struct key_value *, size_t offset);
-#endif
 static int versioncoll(struct key_value*, struct key_value *, size_t offset);
 
 /*
@@ -472,10 +469,8 @@ get_sort_func(struct sort_mods *sm)
 		return (gnumcoll);
 	else if (sm->Mflag)
 		return (monthcoll);
-#ifndef WITHOUT_LIBCRYPTO
 	else if (sm->Rflag)
 		return (randomcoll);
-#endif
 	else if (sm->Vflag)
 		return (versioncoll);
 	else
@@ -812,7 +807,7 @@ cmpsuffix(unsigned char si1, unsigned char si2)
  */
 static int
 numcoll_impl(struct key_value *kv1, struct key_value *kv2,
-    size_t offset __attribute__((unused)), bool use_suffix)
+    size_t offset __unused, bool use_suffix)
 {
 	struct bwstring *s1, *s2;
 	wchar_t sfrac1[MAX_NUM_SIZE + 1], sfrac2[MAX_NUM_SIZE + 1];
@@ -982,7 +977,6 @@ hnumcoll(struct key_value *kv1, struct key_value *kv2, size_t offset)
 	return (numcoll_impl(kv1, kv2, offset, true));
 }
 
-#ifndef WITHOUT_LIBCRYPTO
 /* Use hint space to memoize md5 computations, at least. */
 static void
 randomcoll_init_hint(struct key_value *kv, void *hash)
@@ -997,7 +991,7 @@ randomcoll_init_hint(struct key_value *kv, void *hash)
  */
 static int
 randomcoll(struct key_value *kv1, struct key_value *kv2,
-    size_t offset __attribute__((unused)))
+    size_t offset __unused)
 {
 	struct bwstring *s1, *s2;
 	MD5_CTX ctx1, ctx2;
@@ -1039,14 +1033,13 @@ randomcoll(struct key_value *kv1, struct key_value *kv2,
 
 	return (memcmp(hash1, hash2, sizeof(hash1)));
 }
-#endif /* WITHOUT_LIBCRYPTO */
 
 /*
  * Implements version sort (-V).
  */
 static int
 versioncoll(struct key_value *kv1, struct key_value *kv2,
-    size_t offset __attribute__((unused)))
+    size_t offset __unused)
 {
 	struct bwstring *s1, *s2;
 
@@ -1121,7 +1114,7 @@ cmp_nans(double d1, double d2)
  */
 static int
 gnumcoll(struct key_value *kv1, struct key_value *kv2,
-    size_t offset __attribute__((unused)))
+    size_t offset __unused)
 {
 	double d1, d2;
 	int err1, err2;
@@ -1277,7 +1270,7 @@ gnumcoll(struct key_value *kv1, struct key_value *kv2,
  * Implements month sort (-M).
  */
 static int
-monthcoll(struct key_value *kv1, struct key_value *kv2, size_t offset __attribute__((unused)))
+monthcoll(struct key_value *kv1, struct key_value *kv2, size_t offset __unused)
 {
 	int val1, val2;
 	bool key1_read, key2_read;
