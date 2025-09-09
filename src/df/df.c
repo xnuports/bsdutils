@@ -64,6 +64,7 @@ __FBSDID("$FreeBSD$");
 #include <libxo/xo.h>
 #include <assert.h>
 #include <mntent.h>
+#include <err.h>
 
 #include "compat.h"
 
