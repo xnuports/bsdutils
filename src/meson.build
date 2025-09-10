@@ -17,7 +17,6 @@ subdir('echo')
 subdir('env')
 subdir('expand')
 subdir('expr')
-subdir('factor')
 subdir('false')
 subdir('find')
 subdir('fmt')
@@ -83,5 +82,6 @@ endif
 
 if libcrypto.found()
     subdir('dc')
+    subdir('factor')
     subdir('xinstall')
 endif

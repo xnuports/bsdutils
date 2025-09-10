@@ -44,9 +44,6 @@ static char sccsid[] = "@(#)uniq.c	8.3 (Berkeley) 5/4/95";
 #endif
 #endif /* not lint */
 
-#include <sys/capsicum.h>
-
-#include <capsicum_helpers.h>
 #include <ctype.h>
 #include <err.h>
 #include <errno.h>
@@ -63,6 +60,8 @@ static char sccsid[] = "@(#)uniq.c	8.3 (Berkeley) 5/4/95";
 #include <unistd.h>
 #include <wchar.h>
 #include <wctype.h>
+
+#include "compat.h"
 
 static enum { DF_NONE, DF_NOSEP, DF_PRESEP, DF_POSTSEP } Dflag;
 static bool cflag, dflag, uflag, iflag;
@@ -96,8 +95,8 @@ main (int argc, char *argv[])
 	int ch, comp;
 	size_t prevbuflen, thisbuflen, b1;
 	char *prevline, *thisline, *p;
-	const char *errstr, *ifn, *ofn;
-	cap_rights_t rights;
+	const char *ifn, *ofn;
+	char *errstr;
 
 	(void) setlocale(LC_ALL, "");
 
@@ -125,12 +124,12 @@ main (int argc, char *argv[])
 			iflag = true;
 			break;
 		case 'f':
-			numfields = strtonum(optarg, 0, INT_MAX, &errstr);
+			numfields = strtoll(optarg, &errstr, 10);
 			if (errstr)
 				errx(1, "field skip value is %s: %s", errstr, optarg);
 			break;
 		case 's':
-			numchars = strtonum(optarg, 0, INT_MAX, &errstr);
+			numchars = strtoll(optarg, &errstr, 10);
 			if (errstr != NULL)
 				errx(1, "character skip value is %s: %s", errstr, optarg);
 			break;
@@ -157,32 +156,8 @@ main (int argc, char *argv[])
 	ofn = "stdout";
 	if (argc > 0 && strcmp(argv[0], "-") != 0)
 		ifp = file(ifn = argv[0], "r");
-	cap_rights_init(&rights, CAP_FSTAT, CAP_READ);
-	if (caph_rights_limit(fileno(ifp), &rights) < 0)
-		err(1, "unable to limit rights for %s", ifn);
-	cap_rights_init(&rights, CAP_FSTAT, CAP_WRITE);
 	if (argc > 1)
 		ofp = file(ofn = argv[1], "w");
-	else
-		cap_rights_set(&rights, CAP_IOCTL);
-	if (caph_rights_limit(fileno(ofp), &rights) < 0) {
-		err(1, "unable to limit rights for %s",
-		    argc > 1 ? argv[1] : "stdout");
-	}
-	if (cap_rights_is_set(&rights, CAP_IOCTL)) {
-		unsigned long cmd;
-
-		cmd = TIOCGETA; /* required by isatty(3) in printf(3) */
-
-		if (caph_ioctls_limit(fileno(ofp), &cmd, 1) < 0) {
-			err(1, "unable to limit ioctls for %s",
-			    argc > 1 ? argv[1] : "stdout");
-		}
-	}
-
-	caph_cache_catpages();
-	if (caph_enter() < 0)
-		err(1, "unable to enter capability mode");
 
 	prevbuflen = thisbuflen = 0;
 	prevline = thisline = NULL;

@@ -1,6 +1,6 @@
 project('bsdutils',
         [ 'c', 'cpp' ],
-        version : '13.2',
+        version : '14.3',
         default_options : [
             'c_std=c99',
             'warning_level=2',
@@ -95,6 +95,7 @@ endif
 libedit = dependency('libedit', required : get_option('libedit'))
 
 # dc(1), install(1) and sort(1) need libcrypto
+# factor(6) needs OpenSSL headers
 libcrypto = dependency('libcrypto', required : get_option('libcrypto'))
 
 # seq(1) needs libm

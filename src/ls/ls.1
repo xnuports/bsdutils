@@ -39,7 +39,7 @@
 .Nd list directory contents
 .Sh SYNOPSIS
 .Nm
-.Op Fl ABCFGHILPRSTUWZabcdfghiklmnopqrstuvwxy1\&,
+.Op Fl ABCFGHILPRSTUWabcdfghiklmnpqrstuvwxy1\&,
 .Op Fl -color Ns = Ns Ar when
 .Op Fl D Ar format
 .Op Ar
@@ -192,11 +192,6 @@ This option is not defined in
 Display whiteouts when scanning directories.
 This option is not defined in
 .St -p1003.1-2008 .
-.It Fl Z
-Display each file's MAC label; see
-.Xr maclabel 7 .
-This option is not defined in
-.St -p1003.1-2008 .
 .It Fl a
 Include directory entries whose names begin with a
 dot
@@ -334,15 +329,6 @@ Display user and group IDs numerically rather than converting to a user
 or group name in a long
 .Pq Fl l
 output.
-.It Fl o
-Include the file flags in a long
-.Pq Fl l
-output.
-This option is incompatible with
-.St -p1003.1-2008 .
-See
-.Xr chflags 1
-for a list of file flags and their meanings.
 .It Fl p
 Write a slash
 .Pq Ql /
@@ -866,9 +852,8 @@ List the contents of the current working directory in long format:
 .Dl $ ls -l
 .Pp
 In addition to listing the contents of the current working directory in
-long format, show inode numbers, file flags (see
-.Xr chflags 1 ) ,
-and suffix each filename with a symbol representing its file type:
+long format, show inode numbers, and suffix each filename with a symbol
+representing its file type:
 .Pp
 .Dl $ ls -lioF
 .Pp
@@ -884,9 +869,7 @@ files in order to be compatible with the
 .St -p1003.2
 specification.
 .Sh SEE ALSO
-.Xr chflags 1 ,
 .Xr chmod 1 ,
-.Xr getfacl 1 ,
 .Xr sort 1 ,
 .Xr xterm 1 Pq Pa ports/x11/xterm ,
 .Xr localeconv 3 ,
@@ -895,15 +878,14 @@ specification.
 .Xr strmode 3 ,
 .Xr strverscmp 3 ,
 .Xr termcap 5 ,
-.Xr maclabel 7 ,
 .Xr sticky 7 ,
 .Xr symlink 7 ,
 .Xr getfmac 8
 .Sh STANDARDS
 With the exception of options
-.Fl g , n
+.Fl g
 and
-.Fl o ,
+.Fl n ,
 the
 .Nm
 utility conforms to
@@ -911,17 +893,10 @@ utility conforms to
 and
 .St -p1003.1-2008 .
 The options
-.Fl B , D , G , I , T , U , W , Z , b , h , v , w , y
+.Fl B , D , G , I , T , U , W , b , h , v , w , y
 and
 .Fl ,
 are non-standard extensions.
-.Pp
-The ACL support is compatible with
-.Tn IEEE
-Std\~1003.2c
-.Pq Dq Tn POSIX Ns .2c
-Draft\~17
-(withdrawn).
 .Sh HISTORY
 An
 .Nm

@@ -4,7 +4,7 @@
 #                 this tree.  Primarily for maintenance use when
 #                 a new version of FreeBSD comes out.
 #
-# Author: David Cantrell <dcantrell@burdell.org>
+# Author: Dave Cantrell <dcantrell@burdell.org>
 #
 
 PATH=/bin:/usr/bin

@@ -318,7 +318,7 @@ used, we will convert it to use strtoll() and handle errno results.
 user_from_uid() and group_from_gid()
 ------------------------------------
 Where user_from_uid() is used, we will replace it with a call to
-getpwnam() and then using the pw_name member of the struct passwd
+getpwuid() and then using the pw_name member of the struct passwd
 returned from that function.  Where group_from_gid() is used, we will
 replace it with a call to getgrgid() and then use the gr_name member
 of the struct group returned from that function.
@@ -734,3 +734,25 @@ procctl()
 ---------
 The FreeBSD procctl() function has a different API than the prctl()
 function on Linux.  We replace procctl() calls with prctl().
+
+
+devname(), fdevname(), and fdevname_r()
+---------------------------------------
+FreeBSD contains 'devname' functions which, when given a dev_t or a
+file descriptor, return the device node name of the device in /dev.
+Linux does not have a direct equivalent to this so in programs where
+the functionality is optional (e.g. stat), it is removed and in
+programs where the functionality is required, we rewrite the code
+block to work in a Linux-appropriate way.
+
+
+MAP_NOCORE and MAP_NOSYNC
+-------------------------
+The mmap() call on FreeBSD provides the flags MAP_NOCORE and
+MAP_NOSYNC, Linux does not have these.  MAP_NOCORE prevents the region
+from showing up in a core file.  Since Linux lacks this flag, it is
+removed from the code when found.  The MAP_NOSYNC flag turns off
+automatic syncing of data to physical media.  This is the default
+behavior on Linux and, as such, provides the opposite flag to enable
+that functionality.  In cases where MAP_NOSYNC is found, it is
+removed.

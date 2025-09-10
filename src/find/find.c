@@ -50,7 +50,7 @@ static char sccsid[] = "@(#)find.c	8.5 (Berkeley) 8/5/94";
 
 #include "find.h"
 
-static int find_compare(const FTSENT * const *s1, const FTSENT * const *s2);
+static int find_compare(const FTSENT **s1, const FTSENT **s2);
 
 /*
  * find_compare --
@@ -59,7 +59,7 @@ static int find_compare(const FTSENT * const *s1, const FTSENT * const *s2);
  *	order within each directory.
  */
 static int
-find_compare(const FTSENT * const *s1, const FTSENT * const *s2)
+find_compare(const FTSENT **s1, const FTSENT **s2)
 {
 
 	return (strcoll((*s1)->fts_name, (*s2)->fts_name));
@@ -242,7 +242,9 @@ find_execute(PLAN *plan, char *paths[])
 	}
 	e = errno;
 	finish_execplus();
-	if (e && (!ignore_readdir_race || e != ENOENT))
-		errc(1, e, "fts_read");
+	if (e && (!ignore_readdir_race || e != ENOENT)) {
+		errno = e;
+		err(1, "fts_read");
+	}
 	return (exitstatus);
 }

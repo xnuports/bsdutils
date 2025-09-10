@@ -37,6 +37,7 @@
 #include <fcntl.h>
 #if defined(SORT_THREADS)
 #include <pthread.h>
+#include <sched.h>
 #endif
 #include <semaphore.h>
 #include <stdio.h>
@@ -49,6 +50,8 @@
 #include "coll.h"
 #include "file.h"
 #include "radixsort.h"
+
+#include "compat.h"
 
 unsigned long long free_memory = 1000000;
 unsigned long long available_free_memory = 1000000;
@@ -67,7 +70,7 @@ struct file_reader
 {
 	FILE			*file;
 	char			*fname;
-	char			*buffer;
+	unsigned char		*buffer;
 	unsigned char		*mmapaddr;
 	unsigned char		*mmapptr;
 	size_t			 bsz;
@@ -607,9 +610,7 @@ file_reader_init(const char *fsrc)
 			struct stat stat_buf;
 			void *addr;
 			size_t sz = 0;
-			int fd, flags;
-
-			flags = MAP_NOCORE | MAP_NOSYNC;
+			int fd, flags = 0;
 
 			fd = open(fsrc, O_RDONLY);
 			if (fd < 0)
@@ -679,7 +680,7 @@ file_reader_readline(struct file_reader *fr)
 	} else {
 		ssize_t len;
 
-		len = getdelim(&fr->buffer, &fr->bsz, fr->elsymb, fr->file);
+		len = getdelim((char **) &fr->buffer, &fr->bsz, fr->elsymb, fr->file);
 		if (len < 0) {
 			if (!feof(fr->file))
 				err(2, NULL);
@@ -1449,7 +1450,7 @@ mt_sort(struct sort_list *list,
 			pthread_attr_t attr;
 
 			pthread_attr_init(&attr);
-			pthread_attr_setdetachstate(&attr, PTHREAD_DETACHED);
+			pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 
 			for (;;) {
 				int res = pthread_create(&pth, &attr,
@@ -1458,7 +1459,7 @@ mt_sort(struct sort_list *list,
 				if (res >= 0)
 					break;
 				if (errno == EAGAIN) {
-					pthread_yield();
+					sched_yield();
 					continue;
 				}
 				err(2, NULL);

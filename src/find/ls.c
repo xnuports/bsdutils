@@ -51,6 +51,8 @@ static char sccsid[] = "@(#)ls.c	8.1 (Berkeley) 6/6/93";
 
 #include "find.h"
 
+#include "compat.h"
+
 /* Derived from the print routines in the ls(1) source code. */
 
 static void printlink(char *);
@@ -60,13 +62,29 @@ void
 printlong(char *name, char *accpath, struct stat *sb)
 {
 	char modep[15];
+	struct passwd *pw = NULL;
+	struct group *gr = NULL;
+	char *uname = NULL;
+	char *gname = NULL;
+
+	pw = getpwuid(sb->st_uid);
+	if (pw == NULL)
+		uname = "root";
+	else
+		uname = pw->pw_name;
+
+	gr = getgrgid(sb->st_gid);
+	if (gr == NULL)
+		gname = "root";
+	else
+		gname = gr->gr_name;
 
 	(void)printf("%6ju %8"PRId64" ", (uintmax_t)sb->st_ino, sb->st_blocks);
 	(void)strmode(sb->st_mode, modep);
 	(void)printf("%s %3ju %-*s %-*s ", modep, (uintmax_t)sb->st_nlink,
 	    MAXLOGNAME - 1,
-	    user_from_uid(sb->st_uid, 0), MAXLOGNAME - 1,
-	    group_from_gid(sb->st_gid, 0));
+	    uname, MAXLOGNAME - 1,
+	    gname);
 
 	if (S_ISCHR(sb->st_mode) || S_ISBLK(sb->st_mode))
 		(void)printf("%#8jx ", (uintmax_t)sb->st_rdev);

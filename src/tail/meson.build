@@ -7,6 +7,7 @@ tail_prog = executable(
       'tail.c',
     ],
     include_directories : [ inc, ],
+    link_with : [ libcompat ],
     install : true,
 )
 

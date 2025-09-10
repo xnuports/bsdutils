@@ -39,7 +39,6 @@ static char sccsid[] = "@(#)sleep.c	8.3 (Berkeley) 4/2/94";
 #endif /* not lint */
 #endif
 #include <sys/cdefs.h>
-#include <capsicum_helpers.h>
 #include <err.h>
 #include <errno.h>
 #include <limits.h>
@@ -52,7 +51,7 @@ static void usage(void) __dead2;
 
 static volatile sig_atomic_t report_requested;
 static void
-report_request(int signo __unused)
+report_request(int signo __attribute__((unused)))
 {
 
 	report_requested = 1;
@@ -67,9 +66,6 @@ main(int argc, char *argv[])
 	char unit;
 	char buf[2];
 	int i, matches;
-
-	if (caph_limit_stdio() < 0 || caph_enter() < 0)
-		err(1, "capsicum");
 
 	if (argc < 2)
 		usage();
@@ -105,7 +101,7 @@ main(int argc, char *argv[])
 	original = time_to_sleep.tv_sec = (time_t)seconds;
 	time_to_sleep.tv_nsec = 1e9 * (seconds - time_to_sleep.tv_sec);
 
-	signal(SIGINFO, report_request);
+	signal(SIGUSR1, report_request);
 
 	/*
 	 * Note: [EINTR] is supposed to happen only when a signal was handled

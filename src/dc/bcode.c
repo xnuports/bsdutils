@@ -70,7 +70,7 @@ static void		 print_err(void);
 static void		 pop_print(void);
 static void		 pop_printn(void);
 static __inline void	 print_stack(void);
-static __inline void	 dup(void);
+static __inline void	 _dup(void);
 static void		 swap(void);
 static void		 drop(void);
 
@@ -195,7 +195,7 @@ static const struct jump_entry jump_table_data[] = {
 	{ '_',	parse_number	},
 	{ 'a',	to_ascii	},
 	{ 'c',	clear_stack	},
-	{ 'd',	dup		},
+	{ 'd',	_dup		},
 	{ 'e',	print_err	},
 	{ 'f',	print_stack	},
 	{ 'i',	set_ibase	},
@@ -242,8 +242,7 @@ init_bmachine(bool extended_registers)
 		stack_init(&bmachine.reg[i]);
 
 	bmachine.readstack_sz = READSTACK_SIZE;
-	bmachine.readstack = calloc(sizeof(struct source),
-	    bmachine.readstack_sz);
+	bmachine.readstack = calloc(bmachine.readstack_sz, sizeof(struct source));
 	if (bmachine.readstack == NULL)
 		err(1, NULL);
 	bmachine.obase = bmachine.ibase = 10;
@@ -549,7 +548,7 @@ pop_printn(void)
 }
 
 static __inline void
-dup(void)
+_dup(void)
 {
 
 	stack_dup(&bmachine.stack);

@@ -3,6 +3,8 @@ factor_prog = executable(
     [ 'factor.c',
       'pr_tbl.c',
     ],
+    c_args : [ '-DHAVE_OPENSSL' ],
+    dependencies : [ libcrypto, ],
     install : true,
 )
 

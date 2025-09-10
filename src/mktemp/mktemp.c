@@ -45,6 +45,8 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "compat.h"
+
 static void usage(void) __dead2;
 
 static const struct option long_opts[] = {

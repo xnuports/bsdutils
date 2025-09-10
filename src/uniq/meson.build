@@ -1,6 +1,7 @@
 uniq_prog = executable(
     'uniq',
     [ 'uniq.c' ],
+    include_directories : [ inc, ],
     install : true,
 )
 

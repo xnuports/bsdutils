@@ -47,15 +47,10 @@ static char sccsid[] = "@(#)dd.c	8.5 (Berkeley) 4/2/94";
 #include <sys/cdefs.h>
 #include <sys/param.h>
 #include <sys/stat.h>
-#include <sys/capsicum.h>
-#include <sys/conf.h>
-#include <sys/disklabel.h>
-#include <sys/filio.h>
 #include <sys/mtio.h>
 #include <sys/time.h>
 
 #include <assert.h>
-#include <capsicum_helpers.h>
 #include <ctype.h>
 #include <err.h>
 #include <errno.h>
@@ -71,6 +66,7 @@ static char sccsid[] = "@(#)dd.c	8.5 (Berkeley) 4/2/94";
 
 #include "dd.h"
 #include "extern.h"
+#include "compat.h"
 
 static void dd_close(void);
 static void dd_in(void);
@@ -93,7 +89,7 @@ volatile sig_atomic_t need_progress;
 volatile sig_atomic_t kill_signal;
 
 int
-main(int argc __unused, char *argv[])
+main(int argc __attribute__((unused)), char *argv[])
 {
 	struct itimerval itv = { { 1, 0 }, { 1, 0 } }; /* SIGALARM every second, if needed */
 
@@ -102,10 +98,6 @@ main(int argc __unused, char *argv[])
 	(void)setlocale(LC_CTYPE, "");
 	jcl(argv);
 	setup();
-
-	caph_cache_catpages();
-	if (caph_enter() < 0)
-		err(1, "unable to enter capability mode");
 
 	(void)signal(SIGINFO, siginfo_handler);
 	if (ddflags & C_PROGRESS) {
@@ -145,8 +137,6 @@ setup(void)
 {
 	u_int cnt;
 	int iflags, oflags;
-	cap_rights_t rights;
-	unsigned long cmds[] = { FIODTYPE, MTIOCTOP };
 
 	if (in.name == NULL) {
 		in.name = "stdin";
@@ -164,16 +154,9 @@ setup(void)
 
 	getfdtype(&in);
 
-	cap_rights_init(&rights, CAP_READ, CAP_SEEK);
-	if (caph_rights_limit(in.fd, &rights) == -1)
-		err(1, "unable to limit capability rights");
-
 	if (files_cnt > 1 && !(in.flags & ISTAPE))
 		errx(1, "files is not supported for non-tape devices");
 
-	cap_rights_set(&rights, CAP_FTRUNCATE, CAP_IOCTL, CAP_WRITE);
-	if (ddflags & (C_FDATASYNC | C_FSYNC))
-		cap_rights_set(&rights, CAP_FSYNC);
 	if (out.name == NULL) {
 		/* No way to check for read access here. */
 		out.fd = STDOUT_FILENO;
@@ -207,33 +190,12 @@ setup(void)
 			out.fd = open(out.name, O_WRONLY | oflags, DEFFILEMODE);
 			after_io();
 			out.flags |= NOREAD;
-			cap_rights_clear(&rights, CAP_READ);
 		}
 		if (out.fd == -1)
 			err(1, "%s", out.name);
 	}
 
 	getfdtype(&out);
-
-	if (caph_rights_limit(out.fd, &rights) == -1)
-		err(1, "unable to limit capability rights");
-	if (caph_ioctls_limit(out.fd, cmds, nitems(cmds)) == -1)
-		err(1, "unable to limit capability rights");
-
-	if (in.fd != STDIN_FILENO && out.fd != STDIN_FILENO) {
-		if (caph_limit_stdin() == -1)
-			err(1, "unable to limit capability rights");
-	}
-
-	if (in.fd != STDOUT_FILENO && out.fd != STDOUT_FILENO) {
-		if (caph_limit_stdout() == -1)
-			err(1, "unable to limit capability rights");
-	}
-
-	if (in.fd != STDERR_FILENO && out.fd != STDERR_FILENO) {
-		if (caph_limit_stderr() == -1)
-			err(1, "unable to limit capability rights");
-	}
 
 	/*
 	 * Allocate space for the input and output buffers.  If not doing
@@ -323,23 +285,16 @@ static void
 getfdtype(IO *io)
 {
 	struct stat sb;
-	int type;
 
 	if (fstat(io->fd, &sb) == -1)
 		err(1, "%s", io->name);
 	if (S_ISREG(sb.st_mode))
 		io->flags |= ISTRUNC;
-	if (S_ISCHR(sb.st_mode) || S_ISBLK(sb.st_mode)) { 
-		if (ioctl(io->fd, FIODTYPE, &type) == -1) {
-			err(1, "%s", io->name);
-		} else {
-			if (type & D_TAPE)
-				io->flags |= ISTAPE;
-			else if (type & (D_DISK | D_MEM))
-				io->flags |= ISSEEK;
-			if (S_ISCHR(sb.st_mode) && (type & D_TAPE) == 0)
-				io->flags |= ISCHR;
-		}
+	if (S_ISCHR(sb.st_mode) || S_ISBLK(sb.st_mode)) {
+		if (S_ISCHR(sb.st_mode))
+			io->flags |= ISCHR;
+		if (S_ISBLK(sb.st_mode))
+			io->flags |= ISSEEK;
 		return;
 	}
 	errno = 0;

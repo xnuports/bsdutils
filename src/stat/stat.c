@@ -50,6 +50,7 @@ __RCSID("$NetBSD: stat.c,v 1.33 2011/01/15 22:54:10 njoly Exp $"
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/mount.h>
+#include <sys/sysmacros.h>
 
 #include <ctype.h>
 #include <err.h>
@@ -64,6 +65,10 @@ __RCSID("$NetBSD: stat.c,v 1.33 2011/01/15 22:54:10 njoly Exp $"
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
+
+#include "compat.h"
+
+extern char *__progname;
 
 #if HAVE_STRUCT_STAT_ST_FLAGS
 #define DEF_F "%#Xf "
@@ -206,24 +211,21 @@ main(int argc, char *argv[])
 {
 	struct stat st;
 	int ch, rc, errs, am_readlink;
-	int lsF, fmtchar, usestat, nfs_handle, fn, nonl, quiet;
+	int lsF, fmtchar, usestat, fn, nonl, quiet;
 	const char *statfmt, *options, *synopsis;
-	char dname[sizeof _PATH_DEV + SPECNAMELEN] = _PATH_DEV;
-	fhandle_t fhnd;
 	const char *file;
 
 	am_readlink = 0;
 	lsF = 0;
 	fmtchar = '\0';
 	usestat = 0;
-	nfs_handle = 0;
 	nonl = 0;
 	quiet = 0;
 	linkfail = 0;
 	statfmt = NULL;
 	timefmt = NULL;
 
-	if (strcmp(getprogname(), "readlink") == 0) {
+	if (strcmp(__progname, "readlink") == 0) {
 		am_readlink = 1;
 		options = "fn";
 		synopsis = "[-fn] [file ...]";
@@ -231,7 +233,7 @@ main(int argc, char *argv[])
 		fmtchar = 'f';
 		quiet = 1;
 	} else {
-		options = "f:FHlLnqrst:x";
+		options = "f:FlLnqrst:x";
 		synopsis = "[-FLnq] [-f format | -l | -r | -s | -x] "
 		    "[-t timefmt] [file|handle ...]";
 	}
@@ -240,9 +242,6 @@ main(int argc, char *argv[])
 		switch (ch) {
 		case 'F':
 			lsF = 1;
-			break;
-                case 'H':
-			nfs_handle = 1;
 			break;
 		case 'L':
 			usestat = 1;
@@ -321,37 +320,11 @@ main(int argc, char *argv[])
 	errs = 0;
 	do {
 		if (argc == 0) {
-			if (fdevname_r(STDIN_FILENO, dname +
-			    sizeof _PATH_DEV - 1, SPECNAMELEN) != NULL)
-				file = dname;
-			else
-				file = "(stdin)";
+			file = "(stdin)";
 			rc = fstat(STDIN_FILENO, &st);
 		} else {
-			int j;
-
 			file = argv[0];
-			if (nfs_handle) {
-				rc = 0;
-				bzero(&fhnd, sizeof(fhnd));
-				j = MIN(2 * sizeof(fhnd), strlen(file));
-				if ((j & 1) != 0) {
-					rc = -1;
-				} else {
-					while (j) {
-						rc = hex2byte(&file[j - 2]);
-						if (rc == -1)
-							break;
-						((char*) &fhnd)[j / 2 - 1] = rc;
-						j -= 2;
-					}
-				}
-				if (rc == -1)
-					errno = EINVAL;
-				else
-					rc = fhstat(&fhnd, &st);
-
-			} else if (usestat) {
+			if (usestat) {
 				/*
 				 * Try stat() and if it fails, fall back to
 				 * lstat() just in case we're examining a
@@ -406,7 +379,7 @@ void
 usage(const char *synopsis)
 {
 
-	(void)fprintf(stderr, "usage: %s %s\n", getprogname(), synopsis);
+	(void)fprintf(stderr, "usage: %s %s\n", __progname, synopsis);
 	exit(1);
 }
 
@@ -622,6 +595,8 @@ format1(const struct stat *st,
 	struct timespec ts;
 	struct tm *tm;
 	int l, small, formats;
+	struct passwd *pw = NULL;
+	struct group *gr = NULL;
 
 	tsp = NULL;
 	formats = 0;
@@ -709,10 +684,12 @@ format1(const struct stat *st,
 	case SHOW_st_uid:
 		small = (sizeof(st->st_uid) == 4);
 		data = st->st_uid;
-		sdata = user_from_uid(st->st_uid, 1);
-		if (sdata == NULL) {
-			snprintf(sid, sizeof(sid), "(%ld)", (long)st->st_uid);
+		pw = getpwuid(st->st_uid);
+		if (pw == NULL) {
+			snprintf(sid, sizeof(sid), "(%d)", st->st_uid);
 			sdata = sid;
+		} else {
+			sdata = pw->pw_name;
 		}
 		formats = FMTF_DECIMAL | FMTF_OCTAL | FMTF_UNSIGNED | FMTF_HEX |
 		    FMTF_STRING;
@@ -722,10 +699,12 @@ format1(const struct stat *st,
 	case SHOW_st_gid:
 		small = (sizeof(st->st_gid) == 4);
 		data = st->st_gid;
-		sdata = group_from_gid(st->st_gid, 1);
-		if (sdata == NULL) {
-			snprintf(sid, sizeof(sid), "(%ld)", (long)st->st_gid);
+		gr = getgrgid(st->st_gid);
+		if (gr == NULL) {
+			snprintf(sid, sizeof(sid), "(%d)", st->st_gid);
 			sdata = sid;
+		} else {
+			sdata = gr->gr_name;
 		}
 		formats = FMTF_DECIMAL | FMTF_OCTAL | FMTF_UNSIGNED | FMTF_HEX |
 		    FMTF_STRING;
@@ -1085,7 +1064,7 @@ format1(const struct stat *st,
 #define hex2nibble(c) (c <= '9' ? c - '0' : toupper(c) - 'A' + 10)
 int
 hex2byte(const char c[2]) {
-	if (!(ishexnumber(c[0]) && ishexnumber(c[1])))
+	if (!(isxdigit(c[0]) && isxdigit(c[1])))
 		return -1;
 	return (hex2nibble(c[0]) << 4) + hex2nibble(c[1]);
 }

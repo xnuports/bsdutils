@@ -53,6 +53,8 @@ static char sccsid[] = "@(#)mkdir.c	8.2 (Berkeley) 1/25/94";
 #include <sysexits.h>
 #include <unistd.h>
 
+#include "compat.h"
+
 static int	build(char *, mode_t);
 static void	usage(void);
 

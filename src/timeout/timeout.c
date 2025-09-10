@@ -26,7 +26,7 @@
  */
 
 #include <sys/cdefs.h>
-#include <sys/procctl.h>
+#include <sys/prctl.h>
 #include <sys/time.h>
 #include <sys/wait.h>
 
@@ -40,10 +40,14 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "compat.h"
+
 #define EXIT_TIMEOUT 124
 #define EXIT_INVALID 125
 #define EXIT_CMD_ERROR 126
 #define EXIT_CMD_NOENT 127
+
+extern char *__progname;
 
 static sig_atomic_t sig_chld = 0;
 static sig_atomic_t sig_term = 0;
@@ -59,7 +63,7 @@ usage(void)
 	fprintf(stderr, "Usage: %s [-k time | --kill-after time]"
 		" [-s sig | --signal sig] [-v | --verbose] [--foreground]"
 		" [--preserve-status] <duration> <command> <arg ...>\n",
-		getprogname());
+		__progname);
 
 	exit(EXIT_FAILURE);
 }
@@ -106,18 +110,20 @@ static int
 parse_signal(const char *str)
 {
 	int sig, i;
-	const char *errstr;
+	char *errstr = NULL;
+	const char *signame = NULL;
 
-	sig = strtonum(str, 1, sys_nsig - 1, &errstr);
+	sig = strtol(str, &errstr, 10);
 
-	if (errstr == NULL)
+	if (errno != EINVAL && errno != ERANGE && sig > 1 && sig < NSIG)
 		return (sig);
 
 	if (strncasecmp(str, "SIG", 3) == 0)
 		str += 3;
 
-	for (i = 1; i < sys_nsig; i++) {
-		if (strcasecmp(str, sys_signame[i]) == 0)
+	for (i = 1; i < NSIG; i++) {
+		signame = signum_to_signame(i);
+		if (strcasecmp(str, signame) == 0)
 			return (i);
 	}
 
@@ -154,7 +160,7 @@ send_sig(pid_t pid, int signo)
 {
 	if (verbose) {
 		warnx("sending signal %s(%d) to command '%s'",
-		sys_signame[signo], signo, command);
+		signum_to_signame(signo), signo, command);
 	}
 	kill(pid, signo);
 }
@@ -188,8 +194,7 @@ main(int argc, char **argv)
 	bool do_second_kill = false;
 	bool child_done = false;
 	struct sigaction signals;
-	struct procctl_reaper_status info;
-	struct procctl_reaper_kill killemall;
+	unsigned long info;
 	int signums[] = {
 		-1,
 		SIGTERM,
@@ -247,7 +252,7 @@ main(int argc, char **argv)
 
 	if (!foreground) {
 		/* Acquire a reaper */
-		if (procctl(P_PID, getpid(), PROC_REAP_ACQUIRE, NULL) == -1)
+		if (prctl(PR_SET_CHILD_SUBREAPER, 1, 0, 0) == -1)
 			err(EXIT_FAILURE, "Fail to acquire the reaper");
 	}
 
@@ -318,9 +323,8 @@ main(int argc, char **argv)
 				if (foreground) {
 					break;
 				} else {
-					procctl(P_PID, getpid(),
-					    	PROC_REAP_STATUS, &info);
-					if (info.rs_children == 0)
+					prctl(PR_GET_CHILD_SUBREAPER, &info, 0, 0);
+					if (info == 0)
 						break;
 				}
 			}
@@ -329,10 +333,8 @@ main(int argc, char **argv)
 
 			timedout = true;
 			if (!foreground) {
-				killemall.rk_sig = killsig;
-				killemall.rk_flags = 0;
-				procctl(P_PID, getpid(), PROC_REAP_KILL,
-				    &killemall);
+				if (kill(getpid(), SIGKILL) == -1)
+					err(EXIT_FAILURE, "kill");
 			} else
 				send_sig(pid, killsig);
 
@@ -346,10 +348,8 @@ main(int argc, char **argv)
 
 		} else if (sig_term) {
 			if (!foreground) {
-				killemall.rk_sig = sig_term;
-				killemall.rk_flags = 0;
-				procctl(P_PID, getpid(), PROC_REAP_KILL,
-				    &killemall);
+				if (kill(getpid(), SIGTERM) == -1)
+					err(EXIT_FAILURE, "kill");
 			} else
 				send_sig(pid, sig_term);
 
@@ -369,7 +369,7 @@ main(int argc, char **argv)
 	}
 
 	if (!foreground)
-		procctl(P_PID, getpid(), PROC_REAP_RELEASE, NULL);
+		prctl(PR_SET_CHILD_SUBREAPER, 0, 0, 0);
 
 	if (WEXITSTATUS(pstat))
 		pstat = WEXITSTATUS(pstat);

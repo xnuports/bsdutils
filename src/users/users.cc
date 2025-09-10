@@ -28,9 +28,7 @@
  */
 
 #include <sys/cdefs.h>
-#include <sys/capsicum.h>
 
-#include <capsicum_helpers.h>
 #include <err.h>
 #include <errno.h>
 #include <utmpx.h>
@@ -54,9 +52,6 @@ main(int argc, char **)
 	}
 
 	setutxent();
-
-	if (caph_enter())
-		err(1, "Failed to enter capability mode.");
 
 	while ((ut = getutxent()) != NULL)
 		if (ut->ut_type == USER_PROCESS)

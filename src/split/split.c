@@ -48,7 +48,6 @@ static const char sccsid[] = "@(#)split.c	8.2 (Berkeley) 4/16/94";
 #include <errno.h>
 #include <fcntl.h>
 #include <inttypes.h>
-#include <libutil.h>
 #include <limits.h>
 #include <locale.h>
 #include <stdbool.h>
@@ -59,6 +58,8 @@ static const char sccsid[] = "@(#)split.c	8.2 (Berkeley) 4/16/94";
 #include <unistd.h>
 #include <regex.h>
 #include <sysexits.h>
+
+#include "compat.h"
 
 #define DEFLINE	1000			/* Default num lines per file. */
 
@@ -85,8 +86,10 @@ int
 main(int argc, char **argv)
 {
 	char errbuf[64];
-	const char *p, *errstr;
+	const char *p;
+	char *errstr;
 	int ch, error;
+	uint64_t ubytecnt;
 
 	setlocale(LC_ALL, "");
 
@@ -110,8 +113,8 @@ main(int argc, char **argv)
 				    ch, optarg ? optarg : "");
 			break;
 		case 'a':		/* Suffix length */
-			sufflen = strtonum(optarg, 0, INT_MAX, &errstr);
-			if (errstr != NULL) {
+			sufflen = strtoll(optarg, &errstr, 10);
+			if (*errstr) {
 				errx(EX_USAGE, "%s: suffix length is %s",
 				    optarg, errstr);
 			}
@@ -123,7 +126,8 @@ main(int argc, char **argv)
 			}
 			break;
 		case 'b':		/* Byte count. */
-			if (expand_number(optarg, &bytecnt) != 0) {
+			ubytecnt = bytecnt;
+			if (expand_number(optarg, &ubytecnt) != 0) {
 				errx(EX_USAGE, "%s: byte count is invalid",
 				    optarg);
 			}
@@ -137,14 +141,14 @@ main(int argc, char **argv)
 		case 'l':		/* Line count. */
 			if (numlines != 0)
 				usage();
-			numlines = strtonum(optarg, 1, LONG_MAX, &errstr);
-			if (errstr != NULL) {
+			numlines = strtol(optarg, &errstr, 10);
+			if (*errstr) {
 				errx(EX_USAGE, "%s: line count is %s",
 				    optarg, errstr);
 			}
 			break;
 		case 'n':		/* Chunks. */
-			chunks = strtonum(optarg, 1, LONG_MAX, &errstr);
+			chunks = strtol(optarg, &errstr, 10);
 			if (errstr != NULL) {
 				errx(EX_USAGE, "%s: number of chunks is %s",
 				    optarg, errstr);

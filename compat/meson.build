@@ -16,4 +16,5 @@ libcompat = static_library(
     'compat',
     libcompat_sources,
     include_directories : inc,
+    c_args : [ '-Wno-use-after-free' ],
 )

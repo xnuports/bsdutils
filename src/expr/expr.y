@@ -268,8 +268,7 @@ main(int argc, char *argv[])
 	int c;
 
 	setlocale(LC_ALL, "");
-	if (getenv("EXPR_COMPAT") != NULL
-	    || check_utility_compat("expr")) {
+	if (getenv("EXPR_COMPAT") != NULL) {
 		av = argv + 1;
 		nonposix = 1;
 	} else {
@@ -297,7 +296,7 @@ main(int argc, char *argv[])
 }
 
 int
-yyerror(const char *s __unused)
+yyerror(const char *s __attribute__((unused)))
 {
 	errx(ERR_EXIT, "syntax error");
 }

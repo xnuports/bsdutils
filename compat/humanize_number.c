@@ -41,7 +41,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <locale.h>
-#include <libutil.h>
+
+#include "compat.h"
 
 static const int maxscale = 6;
 

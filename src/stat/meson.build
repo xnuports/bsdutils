@@ -3,6 +3,7 @@ stat_prog = executable(
     [ 'stat.c' ],
     include_directories : [ inc, ],
     link_with : [ libcompat, ],
+    c_args : '-DHAVE_CONFIG_H',
     install : true,
 )
 

@@ -75,6 +75,8 @@ static char sccsid[] = "@(#)cp.c	8.2 (Berkeley) 4/1/94";
 
 #include "extern.h"
 
+#include "compat.h"
+
 #define	STRIP_TRAILING_SLASH(p) {					\
 	while ((p).p_end > (p).p_path + 1 && (p).p_end[-1] == '/')	\
 	*--(p).p_end = 0;						\
@@ -91,7 +93,7 @@ volatile sig_atomic_t info;
 enum op { FILE_TO_FILE, FILE_TO_DIR, DIR_TO_DNE };
 
 static int copy(char *[], enum op, int, struct stat *);
-static void siginfo(int __unused);
+static void siginfo(int __attribute__((unused)));
 
 int
 main(int argc, char *argv[])
@@ -226,8 +228,10 @@ main(int argc, char *argv[])
 		/*
 		 * Case (1).  Target is not a directory.
 		 */
-		if (argc > 1)
-			errc(1, ENOTDIR, "%s", to.p_path);
+		if (argc > 1) {
+			errno = ENOTDIR;
+			err(1, "%s", to.p_path);
+		}
 
 		/*
 		 * Need to detect the case:
@@ -250,10 +254,13 @@ main(int argc, char *argv[])
 			type = FILE_TO_FILE;
 
 		if (have_trailing_slash && type == FILE_TO_FILE) {
-			if (r == -1)
-				errc(1, ENOENT, "%s", to.p_path);
-			else
-				errc(1, ENOTDIR, "%s", to.p_path);
+			if (r == -1) {
+				errno = ENOENT;
+				err(1, "%s", to.p_path);
+			} else {
+				errno = ENOTDIR;
+				err(1, "%s", to.p_path);
+			}
 		}
 	} else {
 		/*
@@ -316,7 +323,8 @@ copy(char *argv[], enum op type, int fts_options, struct stat *root_stat)
 		case FTS_NS:
 		case FTS_DNR:
 		case FTS_ERR:
-			warnc(curr->fts_errno, "%s", curr->fts_path);
+			errno = curr->fts_errno;
+			warn("%s", curr->fts_path);
 			badcp = rval = 1;
 			continue;
 		case FTS_DC:			/* Warn, continue. */
@@ -448,12 +456,9 @@ copy(char *argv[], enum op type, int fts_options, struct stat *root_stat)
 			if (pflag) {
 				if (setfile(curr->fts_statp, -1))
 					rval = 1;
-				if (preserve_dir_acls(curr->fts_statp,
-				    curr->fts_accpath, to.p_path) != 0)
-					rval = 1;
 			} else {
 				mode = curr->fts_statp->st_mode;
-				if ((mode & (S_ISUID | S_ISGID | S_ISTXT)) ||
+				if ((mode & (S_ISUID | S_ISGID | S_ISVTX)) ||
 				    ((mode | S_IRWXU) & mask) != (mode & mask))
 					if (chmod(to.p_path, mode & mask) !=
 					    0) {
@@ -548,7 +553,8 @@ copy(char *argv[], enum op type, int fts_options, struct stat *root_stat)
 				if (root_stat == NULL)
 					root_stat = &created_root_stat;
 			} else if (!S_ISDIR(to_stat.st_mode)) {
-				warnc(ENOTDIR, "%s", to.p_path);
+				errno = ENOTDIR;
+				warn("%s", to.p_path);
 				(void)fts_set(ftsp, curr, FTS_SKIP);
 				badcp = rval = 1;
 				break;
@@ -599,7 +605,7 @@ copy(char *argv[], enum op type, int fts_options, struct stat *root_stat)
 }
 
 static void
-siginfo(int sig __unused)
+siginfo(int sig __attribute__((unused)))
 {
 
 	info = 1;

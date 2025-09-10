@@ -44,13 +44,14 @@ static char sccsid[] = "@(#)parse.c	8.1 (Berkeley) 6/6/93";
 #include <ctype.h>
 #include <string.h>
 #include "hexdump.h"
+#include "compat.h"
 
 FU *endfu;					/* format at end-of-data */
 
 void
 addfile(const char *name)
 {
-	unsigned char *p;
+	char *p;
 	FILE *fp;
 	int ch;
 	char buf[2048 + 1];
@@ -75,7 +76,7 @@ addfile(const char *name)
 void
 add(const char *fmt)
 {
-	unsigned const char *p, *savep;
+	const char *p, *savep;
 	static FS **nextfs;
 	FS *tfs;
 	FU *tfu, **nextfu;
@@ -151,7 +152,7 @@ size(FS *fs)
 {
 	FU *fu;
 	int bcnt, cursize;
-	unsigned char *fmt;
+	char *fmt;
 	int prec;
 
 	/* figure out the data block size needed for each format unit */
@@ -208,8 +209,8 @@ rewrite(FS *fs)
 	enum { NOTOKAY, USEBCNT, USEPREC } sokay;
 	PR *pr, **nextpr;
 	FU *fu;
-	unsigned char *p1, *p2, *fmtp;
-	char savech, cs[3];
+	char *p1, *p2, *fmtp;
+	char savech, cs[4];
 	int nconv, prec;
 
 	prec = 0;
@@ -288,9 +289,10 @@ rewrite(FS *fs)
 				goto isint;
 			case 'o': case 'u': case 'x': case 'X':
 				pr->flags = F_UINT;
-isint:				cs[2] = '\0';
-				cs[1] = cs[0];
-				cs[0] = 'q';
+isint:				cs[3] = '\0';
+				cs[2] = cs[0];
+				cs[1] = 'l';
+				cs[0] = 'l';
 				switch(fu->bcnt) {
 				case 0: case 4:
 					pr->bcnt = 4;
@@ -335,6 +337,7 @@ isint:				cs[2] = '\0';
 				switch(sokay) {
 				case NOTOKAY:
 					badsfmt();
+					return;
 				case USEBCNT:
 					pr->bcnt = fu->bcnt;
 					break;
@@ -355,9 +358,10 @@ isint:				cs[2] = '\0';
 					++p2;
 					switch(p1[2]) {
 					case 'd': case 'o': case'x':
-						cs[0] = 'q';
-						cs[1] = p1[2];
-						cs[2] = '\0';
+						cs[0] = 'l';
+						cs[1] = 'l';
+						cs[2] = p1[2];
+						cs[3] = '\0';
 						break;
 					default:
 						p1[3] = '\0';

@@ -42,7 +42,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 
-#include <libutil.h>
+#include "compat.h"
 
 static void	usage(void);
 
@@ -62,7 +62,6 @@ main(int argc, char **argv)
 	int do_refer;
 	int got_size;
 	char *fname, *rname;
-	struct spacectl_range sr;
 
 	fd = -1;
 	rsize = tsize = sz = off = 0;
@@ -198,9 +197,7 @@ main(int argc, char **argv)
 			tsize = 0;
 
 		if (do_dealloc == 1) {
-			sr.r_offset = off;
-			sr.r_len = len;
-			r = fspacectl(fd, SPACECTL_DEALLOC, &sr, 0, &sr);
+			r = fallocate(fd, FALLOC_FL_PUNCH_HOLE | FALLOC_FL_KEEP_SIZE, off, len);
 		}
 		if (do_truncate == 1)
 			r = ftruncate(fd, tsize);

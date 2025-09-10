@@ -32,7 +32,7 @@
  * SUCH DAMAGE.
  */
 
-static const char copyright[] =
+__attribute__((unused)) static const char copyright[] =
 "@(#) Copyright (c) 1990, 1993, 1994\n\
 	The Regents of the University of California.  All rights reserved.\n";
 
@@ -66,12 +66,12 @@ int isoutput;			/* user specified output operator */
 int issort;         		/* do hierarchies in lexicographical order */
 int isxargs;			/* don't permit xargs delimiting chars */
 int mindepth = -1, maxdepth = -1; /* minimum and maximum depth */
-int regexp_flags = REG_BASIC;	/* use the "basic" regexp by default*/
+int regexp_flags = 0;	/* use the "basic" regexp by default*/
 int exitstatus;
 volatile sig_atomic_t showinfo = 0;
 
 static void usage(void) __dead2;
-static void siginfo_handler(int sig __unused);
+static void siginfo_handler(int sig __attribute__((unused)));
 
 int
 main(int argc, char *argv[])
@@ -83,7 +83,7 @@ main(int argc, char *argv[])
 
 	(void)time(&now);	/* initialize the time-of-day */
 
-	(void)signal(SIGINFO, siginfo_handler);
+	(void)signal(SIGUSR1, siginfo_handler);
 
 	p = start = argv;
 	Hflag = Lflag = 0;
@@ -167,7 +167,7 @@ usage(void)
 }
 
 static void
-siginfo_handler(int sig __unused)
+siginfo_handler(int sig __attribute__((unused)))
 {
 	showinfo = 1;
 }

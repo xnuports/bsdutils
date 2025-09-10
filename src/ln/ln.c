@@ -55,6 +55,10 @@ static char sccsid[] = "@(#)ln.c	8.2 (Berkeley) 3/31/94";
 #include <string.h>
 #include <unistd.h>
 
+#include "compat.h"
+
+extern char *__progname;
+
 static bool	fflag;			/* Unlink existing files. */
 static bool	Fflag;			/* Remove empty directories also. */
 static bool	hflag;			/* Check new name for symlink first. */
@@ -82,15 +86,17 @@ main(int argc, char *argv[])
 	 * "link", for which the functionality provided is greatly
 	 * simplified.
 	 */
-	if (strcmp(getprogname(), "link") == 0) {
+	if (strcmp(__progname, "link") == 0) {
 		while (getopt(argc, argv, "") != -1)
 			link_usage();
 		argc -= optind;
 		argv += optind;
 		if (argc != 2)
 			link_usage();
-		if (lstat(argv[1], &sb) == 0)
-			errc(1, EEXIST, "%s", argv[1]);
+		if (lstat(argv[1], &sb) == 0) {
+			errno = EEXIST;
+			err(1, "%s", argv[1]);
+		}
 		/*
 		 * We could simply call link(2) here, but linkit()
 		 * performs additional checks and gives better
@@ -151,6 +157,7 @@ main(int argc, char *argv[])
 	switch (argc) {
 	case 0:
 		usage();
+		break;
 		/* NOTREACHED */
 	case 1:				/* ln source */
 		exit(linkit(argv[0], ".", true));

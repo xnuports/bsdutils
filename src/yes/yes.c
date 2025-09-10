@@ -41,7 +41,6 @@ static char sccsid[] = "@(#)yes.c	8.1 (Berkeley) 6/6/93";
 #endif
 #endif /* not lint */
 
-#include <capsicum_helpers.h>
 #include <err.h>
 #include <stdio.h>
 #include <string.h>
@@ -57,9 +56,6 @@ main(int argc, char **argv)
 	size_t explen = sizeof(y);
 	size_t more;
 	ssize_t ret;
-
-	if (caph_limit_stdio() < 0 || caph_enter() < 0)
-		err(1, "capsicum");
 
 	if (argc > 1) {
 		exp = argv[1];

@@ -39,7 +39,6 @@ static const char copyright[] =
 static const char sccsid[] = "@(#)logname.c	8.2 (Berkeley) 4/3/94";
 #endif /* not lint */
 #include <sys/cdefs.h>
-#include <capsicum_helpers.h>
 #include <err.h>
 #include <unistd.h>
 #include <stdio.h>
@@ -48,12 +47,9 @@ static const char sccsid[] = "@(#)logname.c	8.2 (Berkeley) 4/3/94";
 void usage(void);
 
 int
-main(int argc, char *argv[] __unused)
+main(int argc, char *argv[] __attribute__((unused)))
 {
 	char *p;
-
-	if (caph_limit_stdio() < 0 || caph_enter() < 0)
-		err(1, "capsicum");
 
 	if (argc != 1)
 		usage();

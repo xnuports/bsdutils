@@ -32,6 +32,7 @@
  */
 
 #include <sys/cdefs.h>
+#include <signal.h>
 
 void	 brace_subst(char *, char **, char *, size_t);
 PLAN	*find_create(char ***);

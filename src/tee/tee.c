@@ -42,13 +42,11 @@ static char sccsid[] = "@(#)tee.c	8.1 (Berkeley) 6/6/93";
 #endif /* not lint */
 
 #include <sys/types.h>
-#include <sys/capsicum.h>
 #include <sys/queue.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/un.h>
 
-#include <capsicum_helpers.h>
 #include <err.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -57,6 +55,8 @@ static char sccsid[] = "@(#)tee.c	8.1 (Berkeley) 6/6/93";
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+
+#include "compat.h"
 
 struct entry {
 	int fd;
@@ -96,9 +96,6 @@ main(int argc, char *argv[])
 	if ((buf = malloc(BSIZE)) == NULL)
 		err(1, "malloc");
 
-	if (caph_limit_stdin() == -1 || caph_limit_stderr() == -1)
-		err(EXIT_FAILURE, "unable to limit stdio");
-
 	add(STDOUT_FILENO, "stdout");
 
 	oflags = O_WRONLY | O_CREAT;
@@ -116,8 +113,6 @@ main(int argc, char *argv[])
 		}
 	}
 
-	if (caph_enter() < 0)
-		err(EXIT_FAILURE, "unable to enter capability mode");
 	while ((rval = read(STDIN_FILENO, buf, BSIZE)) > 0)
 		STAILQ_FOREACH(p, &head, entries) {
 			n = rval;
@@ -147,16 +142,6 @@ static void
 add(int fd, const char *name)
 {
 	struct entry *p;
-	cap_rights_t rights;
-
-	if (fd == STDOUT_FILENO) {
-		if (caph_limit_stdout() == -1)
-			err(EXIT_FAILURE, "unable to limit stdout");
-	} else {
-		cap_rights_init(&rights, CAP_WRITE, CAP_FSTAT);
-		if (caph_rights_limit(fd, &rights) < 0)
-			err(EXIT_FAILURE, "unable to limit rights");
-	}
 
 	if ((p = malloc(sizeof(struct entry))) == NULL)
 		err(1, "malloc");
@@ -192,9 +177,8 @@ tee_open(const char *path, int oflags)
 		goto failed;
 
 	(void)strlcpy(&sun.sun_path[0], path, sizeof(sun.sun_path));
-	sun.sun_len = SUN_LEN(&sun);
 
-	if (connect(fd, (const struct sockaddr *)&sun, sun.sun_len) == 0)
+	if (connect(fd, (const struct sockaddr *)&sun, SUN_LEN(&sun)) == 0)
 		return (fd);
 
 failed:

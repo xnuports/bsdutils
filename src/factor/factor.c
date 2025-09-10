@@ -63,6 +63,7 @@ __RCSID("$NetBSD: factor.c,v 1.19 2009/08/12 05:54:31 dholland Exp $");
  * If no args are given, the list of numbers are read from stdin.
  */
 
+#include <sys/types.h>
 #include <ctype.h>
 #include <err.h>
 #include <errno.h>

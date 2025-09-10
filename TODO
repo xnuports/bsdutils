@@ -1,29 +1,20 @@
-- The following programs in coreutils are not found in the FreeBSD source tree:
-
-      b2sum
-      base32
-      base64
-      chcon
-      link
-      md5sum
-      numfmt
-      ptx
-      runcon
-      sha1sum
-      sha224sum
-      sha256sum
-      sha384sum
-      sha512sum
-      shred
-      shuf
-      sum
-      unlink
-
-- Maybe incorporate diffutils in to the tree (diff, diff3, sdiff).
-
-- awk?
-
-- patch?
+- Add the following things:
+  - calendar
+  - diff
+  - diff3
+  - sdiff
+  - awk
+  - patch
+  - sed
+  - cmp
+  - time
 
 - Use libacl to implement the preserve ACL stuff in cp & mv and other
-  programs that have ACL support on FreeBSD
+  programs that have ACL support on FreeBSD.  This may have to be
+  conditional at build time.
+  - ls
+  - cp
+  - mv
+  - others?
+
+- Add SELinux support?

@@ -38,6 +38,8 @@ static char sccsid[] = "@(#)print.c	8.6 (Berkeley) 4/16/94";
 #include <stddef.h>
 #include <stdio.h>
 #include <string.h>
+#include <unistd.h>
+#include <termios.h>
 
 #include "stty.h"
 #include "extern.h"
@@ -58,12 +60,12 @@ print(struct termios *tp, struct winsize *wp, int ldisc, enum FMT fmt)
 	cnt = 0;
 
 	/* Line discipline. */
-	if (ldisc != TTYDISC) {
+	if (ldisc != N_TTY) {
 		switch(ldisc) {
-		case SLIPDISC:
+		case N_SLIP:
 			cnt += printf("slip disc; ");
 			break;
-		case PPPDISC:
+		case N_PPP:
 			cnt += printf("ppp disc; ");
 			break;
 		default:
@@ -77,9 +79,9 @@ print(struct termios *tp, struct winsize *wp, int ldisc, enum FMT fmt)
 	ospeed = cfgetospeed(tp);
 	if (ispeed != ospeed)
 		cnt +=
-		    printf("ispeed %d baud; ospeed %d baud;", ispeed, ospeed);
+		    printf("ispeed %d baud; ospeed %d baud;", get_baud(ispeed), get_baud(ospeed));
 	else
-		cnt += printf("speed %d baud;", ispeed);
+		cnt += printf("speed %d baud;", get_baud(ispeed));
 	if (fmt >= BSD)
 		cnt += printf(" %d rows; %d columns;", wp->ws_row, wp->ws_col);
 	if (cnt)
@@ -103,12 +105,11 @@ print(struct termios *tp, struct winsize *wp, int ldisc, enum FMT fmt)
 	put("-echonl", ECHONL, 0);
 	put("-echoctl", ECHOCTL, 0);
 	put("-echoprt", ECHOPRT, 0);
-	put("-altwerase", ALTWERASE, 0);
+	put("-altwerase", VWERASE, 0);
 	put("-noflsh", NOFLSH, 0);
 	put("-tostop", TOSTOP, 0);
 	put("-flusho", FLUSHO, 0);
 	put("-pendin", PENDIN, 0);
-	put("-nokerninfo", NOKERNINFO, 0);
 	put("-extproc", EXTPROC, 0);
 
 	/* input flags */
@@ -169,26 +170,7 @@ print(struct termios *tp, struct winsize *wp, int ldisc, enum FMT fmt)
 	put("-hupcl", HUPCL, 1);
 	put("-clocal", CLOCAL, 0);
 	put("-cstopb", CSTOPB, 0);
-	switch(tmp & (CCTS_OFLOW | CRTS_IFLOW)) {
-	case CCTS_OFLOW:
-		bput("ctsflow");
-		break;
-	case CRTS_IFLOW:
-		bput("rtsflow");
-		break;
-	default:
-		put("-crtscts", CCTS_OFLOW | CRTS_IFLOW, 0);
-		break;
-	}
-	put("-dsrflow", CDSR_OFLOW, 0);
-	put("-dtrflow", CDTR_IFLOW, 0);
-	put("-mdmbuf", MDMBUF, 0);	/* XXX mdmbuf ==  dtrflow */
-	if (on(CNO_RTSDTR))
-		bput("-rtsdtr");
-	else {
-		if (fmt >= BSD)
-			bput("rtsdtr");
-	}
+	put("-crtscts", CRTSCTS, 0);
 
 	/* special control characters */
 	cc = tp->c_cc;

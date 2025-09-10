@@ -53,9 +53,6 @@ static char sccsid[] = "@(#)reverse.c	8.1 (Berkeley) 6/6/93";
 #include <string.h>
 #include <unistd.h>
 
-#include <libcasper.h>
-#include <casper/cap_fileargs.h>
-
 #include "extern.h"
 
 static void r_buf(FILE *, const char *);
@@ -249,8 +246,6 @@ r_buf(FILE *fp, const char *fn)
 	tl = TAILQ_LAST(&head, bfhead);
 	first = TAILQ_FIRST(&head);
 	while (tl != NULL) {
-		struct bfelem *temp;
-
 		for (p = tl->l + tl->len - 1, llen = 0; p >= tl->l;
 		    --p, ++llen) {
 			int start = (tl == first && p == tl->l);
@@ -268,12 +263,11 @@ r_buf(FILE *fp, const char *fn)
 				tr = TAILQ_NEXT(tl, entries);
 				llen = 0;
 				if (tr != NULL) {
-					TAILQ_FOREACH_FROM_SAFE(tr, &head,
-					    entries, temp) {
+					while (!TAILQ_EMPTY(&head)) {
+						tr = TAILQ_FIRST(&head);
 						if (tr->len)
 							WR(&tr->l, tr->len);
-						TAILQ_REMOVE(&head, tr,
-						    entries);
+						TAILQ_REMOVE(&head, tr, entries);
 						free(tr);
 					}
 				}

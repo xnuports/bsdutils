@@ -42,7 +42,6 @@ static char sccsid[] = "@(#)chroot.c	8.1 (Berkeley) 6/9/93";
 #endif
 #include <sys/cdefs.h>
 #include <sys/types.h>
-#include <sys/procctl.h>
 
 #include <ctype.h>
 #include <err.h>
@@ -67,14 +66,12 @@ main(int argc, char *argv[])
 	const char	*shell;
 	gid_t		gid, *gidlist;
 	uid_t		uid;
-	int		arg, ch, error, gids;
+	int		ch, gids;
 	long		ngroups_max;
-	bool		nonprivileged;
 
 	gid = 0;
 	uid = 0;
 	user = group = grouplist = NULL;
-	nonprivileged = false;
 	while ((ch = getopt(argc, argv, "G:g:u:n")) != -1) {
 		switch(ch) {
 		case 'u':
@@ -91,9 +88,6 @@ main(int argc, char *argv[])
 			grouplist = optarg;
 			if (*grouplist == '\0')
 				usage();
-			break;
-		case 'n':
-			nonprivileged = true;
 			break;
 		case '?':
 		default:
@@ -156,13 +150,6 @@ main(int argc, char *argv[])
 			else
 				errx(1, "no such user `%s'", user);
 		}
-	}
-
-	if (nonprivileged) {
-		arg = PROC_NO_NEW_PRIVS_ENABLE;
-		error = procctl(P_PID, getpid(), PROC_NO_NEW_PRIVS_CTL, &arg);
-		if (error != 0)
-			err(1, "procctl");
 	}
 
 	if (chdir(argv[0]) == -1 || chroot(".") == -1)

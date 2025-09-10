@@ -49,7 +49,6 @@ static char sccsid[] = "@(#)xargs.c	8.1 (Berkeley) 6/6/93";
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <sys/time.h>
-#include <sys/limits.h>
 #include <sys/resource.h>
 #include <err.h>
 #include <errno.h>
@@ -64,6 +63,7 @@ static char sccsid[] = "@(#)xargs.c	8.1 (Berkeley) 6/6/93";
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <limits.h>
 
 #include "pathnames.h"
 
@@ -92,7 +92,7 @@ static const char *eofstr;
 static long eoflen;
 static int count, insingle, indouble, oflag, pflag, tflag, Rflag, rval, zflag;
 static int cnt, Iflag, jfound, Lflag, Sflag, wasquoted, xflag;
-static int curprocs, maxprocs;
+static long unsigned curprocs, maxprocs;
 static pid_t *childpids;
 
 static volatile int childerr;
@@ -122,7 +122,7 @@ main(int argc, char *argv[])
 	int ch, Jflag, nargs, nflag, nline;
 	size_t linelen;
 	struct rlimit rl;
-	const char *errstr;
+	char *errstr = NULL;
 
 	inpline = replstr = NULL;
 	ep = environ;
@@ -172,22 +172,22 @@ main(int argc, char *argv[])
 			replstr = optarg;
 			break;
 		case 'L':
-			Lflag = (int)strtonum(optarg, 1, INT_MAX, &errstr);
-			if (errstr)
+			Lflag = (int)strtol(optarg, &errstr, 10);
+			if ((errno == ERANGE || errno == EINVAL) && errstr != NULL)
 				errx(1, "-%c %s: %s", ch, optarg, errstr);
 			break;
 		case 'n':
 			nflag = 1;
-			nargs = (int)strtonum(optarg, 1, INT_MAX, &errstr);
-			if (errstr)
+			nargs = (int)strtol(optarg, &errstr, 10);
+			if ((nargs < 1 || (errno == ERANGE || errno == EINVAL)) && errstr != NULL)
 				errx(1, "-%c %s: %s", ch, optarg, errstr);
 			break;
 		case 'o':
 			oflag = 1;
 			break;
 		case 'P':
-			maxprocs = (int)strtonum(optarg, 0, INT_MAX, &errstr);
-			if (errstr)
+			maxprocs = strtoul(optarg, &errstr, 10);
+			if ((errno == ERANGE || errno == EINVAL) && errstr != NULL)
 				errx(1, "-%c %s: %s", ch, optarg, errstr);
 			if (getrlimit(RLIMIT_NPROC, &rl) != 0)
 				errx(1, "getrlimit failed");
@@ -198,8 +198,8 @@ main(int argc, char *argv[])
 			pflag = 1;
 			break;
 		case 'R':
-			Rflag = (int)strtonum(optarg, INT_MIN, INT_MAX, &errstr);
-			if (errstr)
+			Rflag = (int)strtol(optarg, &errstr, 10);
+			if ((errno == ERANGE || errno == EINVAL) && errstr != NULL)
 				errx(1, "-%c %s: %s", ch, optarg, errstr);
 			if (!Rflag)
 				errx(1, "-%c %s: %s", ch, optarg, "must be non-zero");
@@ -208,13 +208,13 @@ main(int argc, char *argv[])
 			/* GNU compatibility */
 			break;
 		case 'S':
-			Sflag = (int)strtonum(optarg, 0, INT_MAX, &errstr);
-			if (errstr)
+			Sflag = (int)strtol(optarg, &errstr, 10);
+			if ((errno == ERANGE || errno == EINVAL) && errstr != NULL)
 				errx(1, "-%c %s: %s", ch, optarg, errstr);
 			break;
 		case 's':
-			nline = (int)strtonum(optarg, 0, INT_MAX, &errstr);
-			if (errstr)
+			nline = (int)strtol(optarg, &errstr, 10);
+			if ((errno == ERANGE || errno == EINVAL) && errstr != NULL)
 				errx(1, "-%c %s: %s", ch, optarg, errstr);
 			break;
 		case 't':
@@ -607,6 +607,7 @@ exec:
 	case -1:
 		warn("vfork");
 		xexit(*argv, 1);
+		break;
 	case 0:
 		if (oflag) {
 			if ((fd = open(_PATH_TTY, O_RDONLY)) == -1)
@@ -701,7 +702,7 @@ waitchildren(const char *name, int waitall)
 static void
 pids_init(void)
 {
-	int i;
+	long unsigned i;
 
 	if ((childpids = malloc(maxprocs * sizeof(*childpids))) == NULL)
 		errx(1, "malloc failed");
@@ -760,7 +761,7 @@ findfreeslot(void)
 static int
 findslot(pid_t pid)
 {
-	int slot;
+	long unsigned slot;
 
 	for (slot = 0; slot < maxprocs; slot++)
 		if (childpids[slot] == pid)
@@ -791,7 +792,7 @@ prompt(void)
 		return (2);	/* Indicate that the TTY failed to open. */
 	(void)fprintf(stderr, "?...");
 	(void)fflush(stderr);
-	if ((response = fgetln(ttyfp, &rsize)) == NULL ||
+	if (getline(&response, &rsize, ttyfp) == -1 ||
 	    regcomp(&cre, nl_langinfo(YESEXPR), REG_EXTENDED) != 0) {
 		(void)fclose(ttyfp);
 		return (0);

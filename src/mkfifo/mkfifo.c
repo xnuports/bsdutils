@@ -51,6 +51,8 @@ static char sccsid[] = "@(#)mkfifo.c	8.2 (Berkeley) 1/5/94";
 #include <string.h>
 #include <unistd.h>
 
+#include "compat.h"
+
 #define	BASEMODE	S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | \
 			S_IROTH | S_IWOTH
 

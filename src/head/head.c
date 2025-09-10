@@ -41,10 +41,8 @@ static char sccsid[] = "@(#)head.c	8.2 (Berkeley) 5/4/95";
 #endif
 #endif /* not lint */
 #include <sys/cdefs.h>
-#include <sys/capsicum.h>
 #include <sys/types.h>
 
-#include <capsicum_helpers.h>
 #include <ctype.h>
 #include <err.h>
 #include <errno.h>
@@ -55,10 +53,7 @@ static char sccsid[] = "@(#)head.c	8.2 (Berkeley) 5/4/95";
 #include <string.h>
 #include <unistd.h>
 
-#include <libutil.h>
-
-#include <libcasper.h>
-#include <casper/cap_fileargs.h>
+#include "compat.h"
 
 /*
  * head - give the first few lines of a stream or of each of a set of files
@@ -85,11 +80,9 @@ int
 main(int argc, char *argv[])
 {
 	FILE *fp;
-	off_t bytecnt;
-	intmax_t linecnt;
+	int64_t bytecnt;
+	int64_t linecnt;
 	int ch, first, eval;
-	fileargs_t *fa;
-	cap_rights_t rights;
 	int qflag = 0;
 	int vflag = 0;
 
@@ -101,11 +94,11 @@ main(int argc, char *argv[])
 	while ((ch = getopt_long(argc, argv, "+n:c:qv", long_opts, NULL)) != -1) {
 		switch(ch) {
 		case 'c':
-			if (expand_number(optarg, &bytecnt) || bytecnt <= 0)
+			if (expand_number(optarg, (uint64_t *) &bytecnt) || bytecnt <= 0)
 				errx(1, "illegal byte count -- %s", optarg);
 			break;
 		case 'n':
-			if (expand_number(optarg, &linecnt) || linecnt <= 0)
+			if (expand_number(optarg, (uint64_t *) &linecnt) || linecnt <= 0)
 				errx(1, "illegal line count -- %s", optarg);
 			break;
 		case 'q':
@@ -125,22 +118,13 @@ main(int argc, char *argv[])
 	argc -= optind;
 	argv += optind;
 
-	fa = fileargs_init(argc, argv, O_RDONLY, 0,
-	    cap_rights_init(&rights, CAP_READ, CAP_FSTAT, CAP_FCNTL), FA_OPEN);
-	if (fa == NULL)
-		err(1, "unable to init casper");
-
-	caph_cache_catpages();
-	if (caph_limit_stdio() < 0 || caph_enter_casper() < 0)
-		err(1, "unable to enter capability mode");
-
 	if (linecnt != -1 && bytecnt != -1)
 		errx(1, "can't combine line and byte counts");
 	if (linecnt == -1)
 		linecnt = 10;
 	if (*argv != NULL) {
 		for (first = 1; *argv != NULL; ++argv) {
-			if ((fp = fileargs_fopen(fa, *argv, "r")) == NULL) {
+			if ((fp = fopen(*argv, "r")) == NULL) {
 				warn("%s", *argv);
 				eval = 1;
 				continue;
@@ -161,17 +145,16 @@ main(int argc, char *argv[])
 	else
 		head_bytes(stdin, bytecnt);
 
-	fileargs_free(fa);
 	exit(eval);
 }
 
 static void
 head(FILE *fp, intmax_t cnt)
 {
-	char *cp;
-	size_t error, readlen;
+	char *cp = NULL;
+	size_t error, readlen = 0;
 
-	while (cnt != 0 && (cp = fgetln(fp, &readlen)) != NULL) {
+	while (cnt != 0 && getline(&cp, &readlen, fp) != -1) {
 		error = fwrite(cp, sizeof(char), readlen, stdout);
 		if (error != readlen)
 			err(1, "stdout");

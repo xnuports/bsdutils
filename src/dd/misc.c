@@ -44,7 +44,6 @@ static char sccsid[] = "@(#)misc.c	8.3 (Berkeley) 4/2/94";
 #include <err.h>
 #include <errno.h>
 #include <inttypes.h>
-#include <libutil.h>
 #include <signal.h>
 #include <stdatomic.h>
 #include <stdio.h>
@@ -55,6 +54,8 @@ static char sccsid[] = "@(#)misc.c	8.3 (Berkeley) 4/2/94";
 
 #include "dd.h"
 #include "extern.h"
+
+#include "compat.h"
 
 double
 secs_elapsed(void)
@@ -132,7 +133,7 @@ progress(void)
 
 /* ARGSUSED */
 void
-siginfo_handler(int signo __unused)
+siginfo_handler(int signo __attribute__((unused)))
 {
 
 	need_summary = 1;
@@ -140,7 +141,7 @@ siginfo_handler(int signo __unused)
 
 /* ARGSUSED */
 void
-sigalarm_handler(int signo __unused)
+sigalarm_handler(int signo __attribute__((unused)))
 {
 
 	need_progress = 1;
@@ -162,7 +163,7 @@ static sig_atomic_t in_io = 0;
 static sig_atomic_t sigint_seen = 0;
 
 static void
-sigint_handler(int signo __unused)
+sigint_handler(int signo __attribute__((unused)))
 {
 	atomic_signal_fence(memory_order_acquire);
 	if (in_io)

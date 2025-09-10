@@ -46,6 +46,8 @@ static char sccsid[] = "@(#)tty.c	8.1 (Berkeley) 6/6/93";
 #include <stdlib.h>
 #include <unistd.h>
 
+extern char *__progname;
+
 static void usage(void) __dead2;
 
 int
@@ -75,6 +77,6 @@ main(int argc, char *argv[])
 static void
 usage(void)
 {
-	fprintf(stderr, "usage: %s [-s]\n", getprogname());
+	fprintf(stderr, "usage: %s [-s]\n", __progname);
 	exit(2);
 }

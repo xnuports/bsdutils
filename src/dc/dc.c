@@ -20,7 +20,6 @@
 #include <sys/cdefs.h>
 #include <sys/stat.h>
 
-#include <capsicum_helpers.h>
 #include <ctype.h>
 #include <err.h>
 #include <errno.h>
@@ -133,19 +132,12 @@ main(int argc, char *argv[])
 		if (fd < 0)
 			err(1, "cannot open file %s", argv[0]);
 
-		if (caph_limit_stream(fd, CAPH_READ) < 0 ||
-		    caph_limit_stdio() < 0 ||
-		    caph_enter() < 0)
-			err(1, "capsicum");
-
 		procfd(fd, argv[0]);
 		preproc_done = true;
 	}
 	if (preproc_done)
 		return (0);
 
-	if (caph_limit_stdio() < 0 || caph_enter())
-		err(1, "capsicum");
 	src_setstream(&src, stdin);
 	reset_bmachine(&src);
 	eval();

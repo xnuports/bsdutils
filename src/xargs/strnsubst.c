@@ -14,6 +14,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <stdint.h>
+
+#include "compat.h"
 
 bool	strnsubst(char **, const char *, const char *, size_t);
 

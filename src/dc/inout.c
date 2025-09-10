@@ -24,6 +24,8 @@
 
 #include "extern.h"
 
+#include "compat.h"
+
 #define MAX_CHARS_PER_LINE 68
 
 static int	 lastchar;

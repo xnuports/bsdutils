@@ -42,15 +42,15 @@ static char sccsid[] = "@(#)wc.c	8.1 (Berkeley) 6/6/93";
 #endif
 
 #include <sys/cdefs.h>
-#include <sys/capsicum.h>
 #include <sys/param.h>
 #include <sys/stat.h>
+#include <sys/types.h>
 
-#include <capsicum_helpers.h>
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <locale.h>
+#include <signal.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -61,12 +61,10 @@ static char sccsid[] = "@(#)wc.c	8.1 (Berkeley) 6/6/93";
 #include <wctype.h>
 #include <libxo/xo.h>
 
-#include <libcasper.h>
-#include <casper/cap_fileargs.h>
+#include "compat.h"
 
 static const char *stdin_filename = "stdin";
 
-static fileargs_t *fa;
 static uintmax_t tlinect, twordct, tcharct, tlongline;
 static bool doline, doword, dochar, domulti, dolongline;
 static volatile sig_atomic_t siginfo;
@@ -78,7 +76,7 @@ static int	cnt(const char *);
 static void	usage(void);
 
 static void
-siginfo_handler(int sig __unused)
+siginfo_handler(int sig __attribute__((unused)))
 {
 
 	siginfo = 1;
@@ -96,7 +94,6 @@ int
 main(int argc, char *argv[])
 {
 	int ch, errors, total;
-	cap_rights_t rights;
 
 	(void) setlocale(LC_CTYPE, "");
 
@@ -132,16 +129,6 @@ main(int argc, char *argv[])
 
 	(void)signal(SIGINFO, siginfo_handler);
 
-	fa = fileargs_init(argc, argv, O_RDONLY, 0,
-	    cap_rights_init(&rights, CAP_READ, CAP_FSTAT), FA_OPEN);
-	if (fa == NULL)
-		xo_err(EXIT_FAILURE, "Unable to initialize casper");
-	caph_cache_catpages();
-	if (caph_limit_stdio() < 0)
-		xo_err(EXIT_FAILURE, "Unable to limit stdio");
-	if (caph_enter_casper() < 0)
-		xo_err(EXIT_FAILURE, "Unable to enter capability mode");
-
 	/* Wc's flags are on by default. */
 	if (!(doline || doword || dochar || domulti || dolongline))
 		doline = doword = dochar = true;
@@ -175,7 +162,6 @@ main(int argc, char *argv[])
 		xo_close_container("total");
 	}
 
-	fileargs_free(fa);
 	xo_close_container("wc");
 	if (xo_finish() < 0)
 		xo_err(EXIT_FAILURE, "stdout");
@@ -227,7 +213,7 @@ cnt(const char *file)
 	if (file == NULL) {
 		fd = STDIN_FILENO;
 		file = stdin_filename;
-	} else if ((fd = fileargs_open(fa, file)) < 0) {
+	} else if ((fd = open(file, O_RDONLY, 0)) < 0) {
 		xo_warn("%s: open", file);
 		return (1);
 	}
@@ -308,7 +294,7 @@ word:	gotsp = true;
 			if (!domulti || MB_CUR_MAX == 1) {
 				clen = 1;
 				wch = (unsigned char)*p;
-			} else if ((clen = mbrtowc(&wch, p, len, &mbs)) == 0) {
+			} else if ((clen = mbrtowc(&wch, (char *)p, len, &mbs)) == 0) {
 				clen = 1;
 			} else if (clen == (size_t)-1) {
 				if (!warned) {

@@ -53,6 +53,8 @@ static char sccsid[] = "@(#)args.c	8.3 (Berkeley) 4/2/94";
 #include "dd.h"
 #include "extern.h"
 
+#include "compat.h"
+
 static int	c_arg(const void *, const void *);
 static int	c_conv(const void *, const void *);
 static int	c_iflag(const void *, const void *);
@@ -212,8 +214,10 @@ f_count(char *arg)
 	uintmax_t res;
 
 	res = get_num(arg);
-	if (res == UINTMAX_MAX)
-		errc(1, ERANGE, "%s", oper);
+	if (res == UINTMAX_MAX) {
+		errno = ERANGE;
+		err(1, "%s", oper);
+	}
 	if (res == 0)
 		cpy_cnt = UINTMAX_MAX;
 	else

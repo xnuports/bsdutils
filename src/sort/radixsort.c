@@ -45,6 +45,8 @@
 #include "coll.h"
 #include "radixsort.h"
 
+#include "compat.h"
+
 #define DEFAULT_SORT_FUNC_RADIXSORT mergesort
 
 #define TINY_NODE(sl) ((sl)->tosort_num < 65)
@@ -642,7 +644,7 @@ run_top_sort_level(struct sort_level *sl)
 			pthread_t pth;
 
 			pthread_attr_init(&attr);
-			pthread_attr_setdetachstate(&attr, PTHREAD_DETACHED);
+			pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 
 			for (;;) {
 				int res = pthread_create(&pth, &attr,
@@ -650,7 +652,7 @@ run_top_sort_level(struct sort_level *sl)
 				if (res >= 0)
 					break;
 				if (errno == EAGAIN) {
-					pthread_yield();
+					sched_yield();
 					continue;
 				}
 				err(2, NULL);
