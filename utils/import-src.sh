@@ -98,6 +98,7 @@ CMDS="bin/test
       bin/sync
       usr.bin/tail
       usr.bin/tee
+      usr.bin/time
       bin/timeout
       usr.bin/touch
       usr.bin/tr

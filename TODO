@@ -7,7 +7,6 @@
   - patch
   - sed
   - cmp
-  - time
 
 - Use libacl to implement the preserve ACL stuff in cp & mv and other
   programs that have ACL support on FreeBSD.  This may have to be
