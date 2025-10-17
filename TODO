@@ -4,7 +4,6 @@
   - diff3
   - sdiff
   - awk
-  - patch
   - sed
   - cmp
 
