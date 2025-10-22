@@ -52,6 +52,7 @@ CMDS="bin/test
       bin/dd
       bin/df
       usr.bin/diff
+      usr.bin/diff3
       usr.bin/dirname
       usr.bin/du
       bin/echo
