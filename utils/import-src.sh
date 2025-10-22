@@ -90,6 +90,7 @@ CMDS="bin/test
       bin/realpath
       bin/rm
       bin/rmdir
+      usr.bin/sdiff3
       usr.bin/sed
       usr.bin/seq
       bin/sleep

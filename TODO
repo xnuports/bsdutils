@@ -1,7 +1,6 @@
 - Add the following things:
   - calendar
   - diff3
-  - sdiff
   - awk
   - sed
   - cmp
