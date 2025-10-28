@@ -86,7 +86,7 @@ static void
 reset_siginfo(void)
 {
 
-	signal(SIGINFO, SIG_DFL);
+	signal(SIGUSR1, SIG_DFL);
 	siginfo = 0;
 }
 
@@ -127,7 +127,7 @@ main(int argc, char *argv[])
 	argv += optind;
 	argc -= optind;
 
-	(void)signal(SIGINFO, siginfo_handler);
+	(void)signal(SIGUSR1, siginfo_handler);
 
 	/* Wc's flags are on by default. */
 	if (!(doline || doword || dochar || domulti || dolongline))

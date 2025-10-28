@@ -265,7 +265,7 @@ main(int argc, char *argv[])
 
 	rval = 0;
 
-	(void)signal(SIGINFO, siginfo);
+	(void)signal(SIGUSR1, siginfo);
 
 	if ((fts = fts_open(argv, ftsoptions, NULL)) == NULL)
 		err(1, "fts_open");

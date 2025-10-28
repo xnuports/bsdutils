@@ -99,7 +99,7 @@ main(int argc __attribute__((unused)), char *argv[])
 	jcl(argv);
 	setup();
 
-	(void)signal(SIGINFO, siginfo_handler);
+	(void)signal(SIGUSR1, siginfo_handler);
 	if (ddflags & C_PROGRESS) {
 		(void)signal(SIGALRM, sigalarm_handler);
 		setitimer(ITIMER_REAL, &itv, NULL);

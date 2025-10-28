@@ -132,7 +132,7 @@ main(int argc, char **argv)
 	if (argc < 2)
 		usage();
 
-	(void)signal(SIGINFO, siginfo_handler);
+	(void)signal(SIGUSR1, siginfo_handler);
 
 	if (Rflag) {
 		if (hflag && (Hflag || Lflag))

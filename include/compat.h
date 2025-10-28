@@ -103,9 +103,6 @@ size_t strlcpy(char *d, const char *s, size_t n);
 size_t strlcat(char *d, const char *s, size_t n);
 #endif
 
-/* we use SIGUSR1 in place of SIGINFO */
-#define SIGINFO SIGUSR1
-
 int signame_to_signum(const char *sig);
 const char *signum_to_signame(int signum);
 int get_signame_by_idx(size_t idx, const char **signame, int *signum);
