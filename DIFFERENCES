@@ -134,8 +134,9 @@ what we will do.  Used in loops, you can change this:
 to:
 
     char *cp = NULL;
-    size_t readlen = 0;
-    while (getline(&cp, &readlen, fp) != -1)
+    size_t buflen = 0;
+    ssize_t readlen;
+    while ((readlen = getline(&cp, &buflen, fp)) != -1)
 
 Which is a simple change without needing to bring in fgetln().  Note
 that for getline(), we need to ensure the first argument is

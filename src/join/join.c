@@ -274,9 +274,10 @@ static void
 slurp(INPUT *F)
 {
 	LINE *lp, *lastlp, tmp;
-	size_t len;
+	size_t buflen = 0;
+	ssize_t len;
 	int cnt;
-	char *bp, *fieldp;
+	char *bp = NULL, *fieldp;
 
 	/*
 	 * Read all of the lines from an input file that have the same
@@ -319,7 +320,7 @@ slurp(INPUT *F)
 			F->pushbool = 0;
 			continue;
 		}
-		if (getline(&bp, &len, F->fp) == -1)
+		if ((len = getline(&bp, &buflen, F->fp)) == -1)
 			return;
 		if (lp->linealloc <= len + 1) {
 			lp->linealloc += MAX(100, len + 1 - lp->linealloc);

@@ -278,13 +278,14 @@ b_n_cut(FILE *fp, const char *fname)
 	size_t col, i, lbuflen = 0;
 	char *lbuf = NULL;
 	int canwrite, clen, warned;
+	ssize_t line_len;
 	mbstate_t mbs;
 
 	memset(&mbs, 0, sizeof(mbs));
 	warned = 0;
-	while (getline(&lbuf, &lbuflen, fp) != -1) {
-		for (col = 0; lbuflen > 0; col += clen) {
-			if ((clen = mbrlen(lbuf, lbuflen, &mbs)) < 0) {
+	while ((line_len = getline(&lbuf, &lbuflen, fp)) != -1) {
+		for (col = 0; line_len > 0; col += clen) {
+			if ((clen = mbrlen(lbuf, line_len, &mbs)) < 0) {
 				if (!warned) {
 					warn("%s", fname);
 					warned = 1;
@@ -326,9 +327,9 @@ b_n_cut(FILE *fp, const char *fname)
 					fwrite(lbuf, 1, clen, stdout);
 			}
 			lbuf += clen;
-			lbuflen -= clen;
+			line_len -= clen;
 		}
-		if (lbuflen > 0)
+		if (line_len > 0)
 			putchar('\n');
 	}
 	return (warned);
@@ -391,18 +392,19 @@ f_cut(FILE *fp, const char *fname)
 	int output;
 	char *lbuf = NULL, *mlbuf;
 	size_t clen, lbuflen = 0, reallen;
+	ssize_t line_len;
 
 	mlbuf = NULL;
-	while (getline(&lbuf, &lbuflen, fp) != -1) {
-		reallen = lbuflen;
+	while ((line_len = getline(&lbuf, &lbuflen, fp)) != -1) {
+		reallen = line_len;
 		/* Assert EOL has a newline. */
-		if (*(lbuf + lbuflen - 1) != '\n') {
+		if (*(lbuf + line_len - 1) != '\n') {
 			/* Can't have > 1 line with no trailing newline. */
-			mlbuf = malloc(lbuflen + 1);
+			mlbuf = malloc(line_len + 1);
 			if (mlbuf == NULL)
 				err(1, "malloc");
-			memcpy(mlbuf, lbuf, lbuflen);
-			*(mlbuf + lbuflen) = '\n';
+			memcpy(mlbuf, lbuf, line_len);
+			*(mlbuf + line_len) = '\n';
 			lbuf = mlbuf;
 			reallen++;
 		}
@@ -422,7 +424,7 @@ f_cut(FILE *fp, const char *fname)
 				isdelim = 1;
 			if (ch == '\n') {
 				if (!isdelim && !sflag)
-					(void)fwrite(lbuf, lbuflen, 1, stdout);
+					(void)fwrite(lbuf, line_len, 1, stdout);
 				break;
 			}
 		}
