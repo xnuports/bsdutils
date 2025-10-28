@@ -1401,7 +1401,7 @@ asciifile(FILE *f)
 static char *
 match_function(const long *f, int pos, FILE *fp)
 {
-	unsigned char buf[FUNCTION_CONTEXT_SIZE];
+	char buf[FUNCTION_CONTEXT_SIZE];
 	size_t nc;
 	int last = lastline;
 	const char *state = NULL;
