@@ -283,9 +283,10 @@ static void
 plan_b(const char *filename)
 {
 	FILE	*ifp;
-	size_t	i, j, len, maxlen;
+	size_t	i, j, buflen = 0, maxlen;
 	char	*lbuf = NULL, *p = NULL;
 	bool	found_revision = (revision == NULL);
+	ssize_t len;
 
 	using_plan_a = false;
 	if ((ifp = fopen(filename, "r")) == NULL)
@@ -295,7 +296,7 @@ plan_b(const char *filename)
 		pfatal("can't open file %s", TMPINNAME);
 	len = 0;
 	maxlen = 1;
-	while (getline(&p, &len, ifp) != -1) {
+	while ((len = getline(&p, &buflen, ifp)) != -1) {
 		if (p[len - 1] == '\n')
 			p[len - 1] = '\0';
 		else {

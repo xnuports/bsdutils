@@ -1216,10 +1216,11 @@ size_t
 pgets(bool do_indent)
 {
 	char *line = NULL;
-	size_t len = 0;
+	size_t buf_len = 0;
 	int indent = 0, skipped = 0;
+	ssize_t len;
 
-	if (getline(&line, &len, pfp) == -1) {
+	if ((len = getline(&line, &buf_len, pfp)) == -1) {
 		warn("getline");
 	}
 	if (line != NULL) {

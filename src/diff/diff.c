@@ -481,14 +481,15 @@ static void
 read_excludes_file(char *file)
 {
 	FILE *fp;
-	char *buf, *pattern;
-	size_t len;
+	char *buf = NULL, *pattern;
+	size_t buflen = 0;
+	ssize_t len;
 
 	if (strcmp(file, "-") == 0)
 		fp = stdin;
 	else if ((fp = fopen(file, "r")) == NULL)
 		err(2, "%s", file);
-	while (getline(&buf, &len, fp) != -1) {
+	while ((len = getline(&buf, &buflen, fp)) != -1) {
 		if (buf[len - 1] == '\n')
 			len--;
 		if ((pattern = strndup(buf, len)) == NULL)

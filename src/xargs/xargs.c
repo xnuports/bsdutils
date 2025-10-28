@@ -783,21 +783,22 @@ static int
 prompt(void)
 {
 	regex_t cre;
-	size_t rsize;
+	size_t rsize = 0;
 	int match;
-	char *response;
+	char *response = NULL;
 	FILE *ttyfp;
+	ssize_t line_len;
 
 	if ((ttyfp = fopen(_PATH_TTY, "r")) == NULL)
 		return (2);	/* Indicate that the TTY failed to open. */
 	(void)fprintf(stderr, "?...");
 	(void)fflush(stderr);
-	if (getline(&response, &rsize, ttyfp) == -1 ||
+	if ((line_len = getline(&response, &rsize, ttyfp)) == -1 ||
 	    regcomp(&cre, nl_langinfo(YESEXPR), REG_EXTENDED) != 0) {
 		(void)fclose(ttyfp);
 		return (0);
 	}
-	response[rsize - 1] = '\0';
+	response[line_len - 1] = '\0';
 	match = regexec(&cre, response, 0, NULL, 0);
 	(void)fclose(ttyfp);
 	regfree(&cre);
