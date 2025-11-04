@@ -3,7 +3,6 @@
   - diff3
   - awk
   - sed
-  - what
   - whereis
 
 - Use libacl to implement the preserve ACL stuff in cp & mv and other
