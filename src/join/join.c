@@ -322,8 +322,8 @@ slurp(INPUT *F)
 		}
 		if ((len = getline(&bp, &buflen, F->fp)) == -1)
 			return;
-		if (lp->linealloc <= len + 1) {
-			lp->linealloc += MAX(100, len + 1 - lp->linealloc);
+		if (lp->linealloc <= ((size_t) len) + 1) {
+			lp->linealloc += MAX(100, ((size_t) len) + 1 - lp->linealloc);
 			if ((lp->line =
 			    realloc(lp->line, lp->linealloc)) == NULL)
 				err(1, NULL);

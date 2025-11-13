@@ -1224,8 +1224,8 @@ pgets(bool do_indent)
 		warn("getline");
 	}
 	if (line != NULL) {
-		if (len + 1 > buf_size) {
-			while (len + 1 > buf_size)
+		if (((size_t) len) + 1 > buf_size) {
+			while (((size_t) len) + 1 > buf_size)
 				buf_size *= 2;
 			free(buf);
 			buf = malloc(buf_size);

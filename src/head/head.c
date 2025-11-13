@@ -152,7 +152,8 @@ static void
 head(FILE *fp, intmax_t cnt)
 {
 	char *cp = NULL;
-	size_t error, buflen = 0;
+	size_t buflen = 0;
+	ssize_t error;
 	ssize_t readlen;
 
 	while (cnt != 0 && (readlen = getline(&cp, &buflen, fp)) != -1) {

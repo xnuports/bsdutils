@@ -312,7 +312,7 @@ plan_b(const char *filename)
 		}
 		if (revision != NULL && !found_revision && rev_in_string(p))
 			found_revision = true;
-		if (len > maxlen)
+		if (((size_t) len) > maxlen)
 			maxlen = len;   /* find longest line */
 	}
 	free(lbuf);
