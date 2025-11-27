@@ -43,6 +43,9 @@ CMDS="bin/test
       bin/chmod
       usr.sbin/chown
       usr.bin/cksum
+      usr.bin/col
+      usr.bin/colrm
+      usr.bin/column
       usr.bin/comm
       bin/cp
       usr.bin/csplit
@@ -68,10 +71,12 @@ CMDS="bin/test
       usr.bin/hexdump
       bin/hostname
       usr.bin/id
+      usr.bin/indent
       usr.bin/join
       bin/kill
       bin/ln
       usr.bin/logname
+      usr.bin/look
       bin/ls
       bin/mkdir
       sbin/mknod
@@ -88,6 +93,7 @@ CMDS="bin/test
       usr.bin/printf
       bin/pwd
       bin/realpath
+      usr.bin/rev
       bin/rm
       bin/rmdir
       usr.bin/sdiff3
@@ -110,6 +116,7 @@ CMDS="bin/test
       usr.bin/truncate
       usr.bin/tsort
       usr.bin/tty
+      usr.bin/ul
       usr.bin/uname
       usr.bin/unexpand
       usr.bin/uniq
