@@ -146,6 +146,18 @@ initialization, just the declaration.  Though sometimes you see
 separate initialization lines, but not always.
 
 
+fgetwln()
+---------
+This function is non-portable and only present on FreeBSD (possibly
+other BSD systems).  glibc offers fgetwc() which reads a single wchar
+at a time from a FILE.  The fgetwln() function reads a string of
+wchars up to a newline and returns the string.  Code using fgetwln()
+has been rewritten to use fgetwc().  Since fgetwc() reads a single
+wchar at a time, the read loops are rewritten to use a buffer to build
+up a string of text and when newline is found, take the appropriate
+action.
+
+
 asprintf()
 ----------
 glibc has this if you define _GNU_SOURCE.
