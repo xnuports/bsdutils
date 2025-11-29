@@ -29,6 +29,8 @@ BuildRequires:  openssl-devel
 BuildRequires:  libxo-devel
 BuildRequires:  gnupg2
 
+# Required by 'find'
+BuildRequires:  libacl-devel
 
 %description
 Build deviation and compliance tool.  This program runs a number of tests
