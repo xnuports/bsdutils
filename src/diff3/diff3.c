@@ -243,12 +243,12 @@ readin(int fd, struct diff **dd)
 	return (i);
 }
 
-static int
+static pid_t
 diffexec(const char *diffprog, char **diffargv, int fd[])
 {
-	int pd;
+	pid_t pd;
 
-	switch (pdfork(&pd, PD_CLOEXEC)) {
+	switch ((pd = fork())) {
 	case 0:
 		close(fd[0]);
 		if (dup2(fd[1], STDOUT_FILENO) == -1)
@@ -829,15 +829,14 @@ increase(void)
 int
 main(int argc, char **argv)
 {
-	int ch, nblabels, status, m, n, kq, nke, nleft, i;
+	int ch, nblabels, status, m, n, nleft, i;
 	char *labels[] = { NULL, NULL, NULL };
 	const char *diffprog = DIFF_PATH;
 	char *file1, *file2, *file3;
 	char *diffargv[7];
 	int diffargc = 0;
 	int fd13[2], fd23[2];
-	int pd13, pd23;
-	struct kevent *e;
+	pid_t pd[2];
 
 	nblabels = 0;
 	eflag = EFLAG_NONE;
@@ -913,14 +912,6 @@ main(int argc, char **argv)
 		exit(2);
 	}
 
-	kq = kqueue();
-	if (kq == -1)
-		err(2, "kqueue");
-
-	e = malloc(2 * sizeof(struct kevent));
-	if (e == NULL)
-		err(2, "malloc");
-
 	/* TODO stdio */
 	file1 = argv[0];
 	file2 = argv[1];
@@ -962,17 +953,11 @@ main(int argc, char **argv)
 	diffargv[diffargc + 2] = NULL;
 
 	nleft = 0;
-	pd13 = diffexec(diffprog, diffargv, fd13);
-	EV_SET(e + nleft , pd13, EVFILT_PROCDESC, EV_ADD, NOTE_EXIT, 0, NULL);
-	if (kevent(kq, e + nleft, 1, NULL, 0, NULL) == -1)
-		err(2, "kevent1");
+	pd[0] = diffexec(diffprog, diffargv, fd13);
 	nleft++;
 
 	diffargv[diffargc] = file2;
-	pd23 = diffexec(diffprog, diffargv, fd23);
-	EV_SET(e + nleft , pd23, EVFILT_PROCDESC, EV_ADD, NOTE_EXIT, 0, NULL);
-	if (kevent(kq, e + nleft, 1, NULL, 0, NULL) == -1)
-		err(2, "kevent2");
+	pd[1] = diffexec(diffprog, diffargv, fd23);
 	nleft++;
 
 	/* parse diffs */
@@ -980,20 +965,23 @@ main(int argc, char **argv)
 	m = readin(fd13[0], &d13);
 	n = readin(fd23[0], &d23);
 
-	/* waitpid cooked over pdforks */
+	/* waitpid loop for both diff processes */
 	while (nleft > 0) {
-		nke = kevent(kq, NULL, 0, e, nleft, NULL);
-		if (nke == -1)
-			err(2, "kevent");
-		for (i = 0; i < nke; i++) {
-			status = e[i].data;
-			if (WIFEXITED(status) && WEXITSTATUS(status) >= 2)
-				errx(2, "diff exited abnormally");
-			else if (WIFSIGNALED(status))
-				errx(2, "diff killed by signal %d",
-				    WTERMSIG(status));
+		for (i = 0; i < 2; i++) {
+			if (waitpid(pd[i], &status, WNOHANG | WCONTINUED) == -1) {
+				err(1, "waitpid");
+			}
+
+			if (WIFEXITED(status) && WEXITSTATUS(status) >= 2) {
+				err(1, "diff exited abnormally");
+			} else if (WIFSIGNALED(status)) {
+				err(1, "diff killed by signal %d", WTERMSIG(status));
+			}
+
+			if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
+				nleft -= 1;
+			}
 		}
-		nleft -= nke;
 	}
 	merge(m, n);
 
