@@ -150,6 +150,17 @@ for p in ${CMDS} ; do
     cp -pr ${rp}/* ${CWD}/src/${sp}
 done
 
+# The 'ee' editor is in the contrib directory, handle it separately
+sp="ee"
+rp="usr/src/contrib/${sp}"
+
+for f in create.make make.default Makefile make.local ; do
+    [ -f "${rp}"/"${f}" ] && rm -f "${rp}"/"${f}"
+done
+
+[ -d "${CWD}"/src/"${sp}" ] || mkdir -p "${CWD}"/src/"${sp}"
+cp -pr "${rp}"/* "${CWD}"/src/"${sp}"
+
 # 'compat' is our static library with a subset of BSD library functions
 cp -p usr/src/lib/libc/gen/setmode.c ${CWD}/compat
 cp -p usr/src/lib/libc/string/strmode.c ${CWD}/compat

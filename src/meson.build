@@ -101,3 +101,7 @@ if libcrypto.found()
     subdir('factor')
     subdir('xinstall')
 endif
+
+if libncurses.found()
+    subdir('ee')
+endif

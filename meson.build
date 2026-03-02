@@ -81,15 +81,7 @@ add_global_arguments('-D_GNU_SOURCE', language : [ 'c', 'cpp' ])
 add_global_arguments('-D_FILE_OFFSET_BITS=64', language : [ 'c', 'cpp' ])
 
 # ls(1) needs the terminfo library
-foreach opt : ['tinfo', 'ncursesw', 'ncurses']
-    libtinfo = cc.find_library(opt, required : false)
-    if libtinfo.found()
-        break
-    endif
-endforeach
-if not libtinfo.found() and get_option('color_ls')
-    error('a terminfo library is needed')
-endif
+libtinfo = dependency('tinfo', required : get_option('color_ls'))
 
 # bc(1) needs libedit
 libedit = dependency('libedit', required : get_option('libedit'))
@@ -103,6 +95,9 @@ libm = cc.find_library('m', required : true)
 
 # df(1) needs libxo
 libxo = dependency('libxo', required : true)
+
+# ee(1) needs the ncurses library
+libncurses = dependency('ncurses', required : get_option('ee'))
 
 # needed by a few utils; provided by glibc, but not by e.g. musl
 

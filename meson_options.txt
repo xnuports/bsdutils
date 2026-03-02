@@ -32,3 +32,8 @@ option('libedit',
     type: 'feature', value: 'enabled',
     description: 'Use libedit (needed by bc(1))'
 )
+
+option('ee',
+    type: 'boolean', value: true,
+    description: 'Enable Easy Editor, the ee(1) command (needs ncurses)'
+)

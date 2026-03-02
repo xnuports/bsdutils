@@ -3,15 +3,6 @@
 
 - Add the following things:
   - calendar
-  - diff3
-  - ee to replace nano?
-  - dnsdomainname
-  - ifconfig? (how?)
-  - ping
-  - telnet
-  - tftp
-  - traceroute
-  - tftpd
 
 - Use libacl to implement the preserve ACL stuff in cp & mv and other
   programs that have ACL support on FreeBSD.  This may have to be
