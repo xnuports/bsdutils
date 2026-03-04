@@ -4,12 +4,19 @@
 - Add the following things:
   - calendar
 
-- Use libacl to implement the preserve ACL stuff in cp & mv and other
-  programs that have ACL support on FreeBSD.  This may have to be
-  conditional at build time.
+- Add POSIX ACL support using libcap to these commands, but make it a build
+  time option:
   - ls
-  - cp
-  - mv
-  - others?
+  - users
 
-- Add SELinux support?
+- Add SELinux support using libselinux to these commands, but make it a
+  build time option:
+  - cp
+  - id
+  - install
+  - ls
+  - mkdir
+  - mkfifo
+  - mknod
+  - mv
+  - stat
